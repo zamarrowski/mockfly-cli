@@ -33,16 +33,19 @@ Every project is mounted under its slug (same as production) and under a friendl
 
 ## Commands
 
+The table shows the global `mockfly` command; with npx, prefix them as `npx mockfly-cli <command>`.
+
 | Command | What it does |
 | --- | --- |
-| `mockfly login` | Save your account API key (`mf_…`, created in the dashboard) to `~/.mockfly/config.json` |
-| `mockfly pull [projects...]` | Download all your projects — or just the named ones — to `~/.mockfly/projects` |
+| `mockfly login [--key <mf_…>]` | Validate and save your account API key (created in the dashboard) to `~/.mockfly/config.json` |
+| `mockfly pull [projects...]` | Download all your projects — or just the named ones (by slug or name) — to `~/.mockfly/projects` |
 | `mockfly serve [--port 4000]` | Serve every pulled project locally, offline |
 | `mockfly list` | Show what is pulled and how stale it is |
 | `mockfly rm <project>` | Remove a pulled project |
-| `mockfly whoami` / `logout` | Inspect / clear the saved credentials |
+| `mockfly whoami` | Show which API key and API url are active |
+| `mockfly logout` | Delete the saved API key |
 
-Snapshots live in `~/.mockfly/projects` by default, out of your working directory. All commands accept `--dir <dir>` for a project-local workspace instead (e.g. mocks you want to commit alongside a repo).
+Snapshots live in `~/.mockfly/projects` by default, out of your working directory. `pull`, `serve`, `list` and `rm` accept `--dir <dir>` for a project-local workspace instead (e.g. mocks you want to commit alongside a repo). `login` and `pull` also accept `--key <key>` and `--api <url>` as one-off overrides.
 
 ## How it works
 
