@@ -1,4 +1,4 @@
-# mockfly
+# mockfly-cli
 
 Serve your [Mockfly](https://app.mockfly.dev) mock APIs locally — fully offline.
 
@@ -6,11 +6,18 @@ Pull your projects once while you have internet, then keep mocking on the plane,
 
 ```bash
 # while online
-npx mockfly login          # paste an API key from the Mockfly dashboard
-npx mockfly pull           # downloads all your projects to ./mockfly/*.json
+npx mockfly-cli login      # paste an API key from the Mockfly dashboard
+npx mockfly-cli pull       # downloads all your projects to ./mockfly/*.json
 
 # from now on, no internet needed
-npx mockfly serve
+npx mockfly-cli serve
+```
+
+Or install it globally and get the shorter `mockfly` command:
+
+```bash
+npm install -g mockfly-cli
+mockfly pull && mockfly serve
 ```
 
 ```
