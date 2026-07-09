@@ -30,7 +30,7 @@ program
   .command('pull')
   .description('Download your projects as local JSON files (all of them, or just the given ones)')
   .argument('[projects...]', 'project slugs or names to pull (default: all)')
-  .option('-d, --dir <dir>', 'workspace directory', 'mockfly')
+  .option('-d, --dir <dir>', 'workspace directory (default: ~/.mockfly/projects)')
   .option('-k, --key <key>', 'API key override')
   .option('--api <url>', 'API base url override')
   .action(pull)
@@ -39,20 +39,20 @@ program
   .command('serve')
   .description('Serve every pulled project locally — works fully offline')
   .option('-p, --port <port>', 'port to listen on', '4000')
-  .option('-d, --dir <dir>', 'workspace directory', 'mockfly')
+  .option('-d, --dir <dir>', 'workspace directory (default: ~/.mockfly/projects)')
   .action(serve)
 
 program
   .command('list')
   .description('List the projects pulled into the local workspace')
-  .option('-d, --dir <dir>', 'workspace directory', 'mockfly')
+  .option('-d, --dir <dir>', 'workspace directory (default: ~/.mockfly/projects)')
   .action(list)
 
 program
   .command('rm')
   .description('Remove a pulled project from the local workspace')
   .argument('<project>', 'project slug or name')
-  .option('-d, --dir <dir>', 'workspace directory', 'mockfly')
+  .option('-d, --dir <dir>', 'workspace directory (default: ~/.mockfly/projects)')
   .action(rm)
 
 program.parse()

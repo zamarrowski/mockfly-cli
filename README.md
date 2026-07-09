@@ -7,7 +7,7 @@ Pull your projects once while you have internet, then keep mocking on the plane,
 ```bash
 # while online
 npx mockfly-cli login      # paste an API key from the Mockfly dashboard
-npx mockfly-cli pull       # downloads all your projects to ./mockfly/*.json
+npx mockfly-cli pull       # snapshots all your projects to ~/.mockfly/projects
 
 # from now on, no internet needed
 npx mockfly-cli serve
@@ -36,13 +36,13 @@ Every project is mounted under its slug (same as production) and under a friendl
 | Command | What it does |
 | --- | --- |
 | `mockfly login` | Save your account API key (`mf_…`, created in the dashboard) to `~/.mockfly/config.json` |
-| `mockfly pull [projects...]` | Download all your projects — or just the named ones — to `./mockfly/` |
+| `mockfly pull [projects...]` | Download all your projects — or just the named ones — to `~/.mockfly/projects` |
 | `mockfly serve [--port 4000]` | Serve every pulled project locally, offline |
 | `mockfly list` | Show what is pulled and how stale it is |
 | `mockfly rm <project>` | Remove a pulled project |
 | `mockfly whoami` / `logout` | Inspect / clear the saved credentials |
 
-All commands accept `--dir <dir>` to use a workspace other than `./mockfly`.
+Snapshots live in `~/.mockfly/projects` by default, out of your working directory. All commands accept `--dir <dir>` for a project-local workspace instead (e.g. mocks you want to commit alongside a repo).
 
 ## How it works
 
@@ -55,7 +55,7 @@ All commands accept `--dir <dir>` to use a workspace other than `./mockfly`.
 ## Security notes
 
 - `mockfly login` stores your API key in plaintext at `~/.mockfly/config.json` (file mode `600`), like `~/.npmrc` or `~/.aws/credentials`. Use `mockfly logout` to remove it, and revoke keys from the Mockfly dashboard.
-- Pulled files in `./mockfly/` include your project **environment variables**. If those hold secrets, add the workspace to `.gitignore` before committing — sharing the files shares the secrets.
+- Pulled files include your project **environment variables**. The default workspace (`~/.mockfly/projects`) keeps them out of your repos; if you pull into a local dir with `--dir`, add it to `.gitignore` before committing — sharing the files shares the secrets.
 - The local server binds to all interfaces like any Express app; it is meant for local development, not for exposing to the internet.
 
 ## Configuration

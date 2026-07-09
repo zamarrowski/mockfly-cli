@@ -1,6 +1,6 @@
 {
   "name": "mockfly-cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Serve your Mockfly mock APIs locally, offline. Pull your projects once, mock without internet.",
   "type": "module",
   "license": "MIT",
@@ -35,7 +35,7 @@
     "mockfly"
   ],
   "dependencies": {
-    "@faker-js/faker": "9.0.1",
+    "@faker-js/faker": "9.9.0",
     "commander": "^12.1.0",
     "express": "^4.19.2",
     "vm2": "^3.9.19",

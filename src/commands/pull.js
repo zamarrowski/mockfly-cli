@@ -49,7 +49,9 @@ export const pull = async (slugs, options) => {
     }
   }
 
-  if (pulledEnvVars) {
+  // With the default workspace (~/.mockfly/projects) there is no risk of committing
+  // the files by accident; only warn when pulling into a custom, likely-local dir.
+  if (pulledEnvVars && options.dir) {
     console.log(
       yellow('\n⚠ These files include your project environment variables.') +
         dim(' If they hold secrets, keep the workspace out of version control (add it to .gitignore).')

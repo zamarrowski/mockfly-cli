@@ -1,9 +1,13 @@
 import fs from 'fs'
+import os from 'os'
 import path from 'path'
 
-export const DEFAULT_DIR = 'mockfly'
+// Pulled projects live next to the config (~/.mockfly) by default, out of the
+// user's working directory — snapshots must survive reboots, so no tmp dirs.
+// Pass --dir for a project-local workspace (e.g. mocks committed with a repo).
+export const defaultDir = () => path.join(os.homedir(), '.mockfly', 'projects')
 
-export const resolveDir = (options = {}) => path.resolve(options.dir || DEFAULT_DIR)
+export const resolveDir = (options = {}) => (options.dir ? path.resolve(options.dir) : defaultDir())
 
 // Human-friendly alias derived from the project name, so mocks can be reached at
 // /user-api/... besides the UUID slug.
