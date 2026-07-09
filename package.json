@@ -4,6 +4,15 @@
   "description": "Serve your Mockfly mock APIs locally, offline. Pull your projects once, mock without internet.",
   "type": "module",
   "license": "MIT",
+  "author": "Sergio Zamarro (https://github.com/zamarrowski)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zamarrowski/mockfly-cli.git"
+  },
+  "homepage": "https://github.com/zamarrowski/mockfly-cli#readme",
+  "bugs": {
+    "url": "https://github.com/zamarrowski/mockfly-cli/issues"
+  },
   "bin": "./bin/mockfly.js",
   "files": [
     "bin",

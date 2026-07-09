@@ -64,3 +64,11 @@ All commands accept `--dir <dir>` to use a workspace other than `./mockfly`.
 yarn install
 yarn test        # node --test: engine unit tests + e2e against a real local server
 ```
+
+## Contributing
+
+Issues and pull requests are welcome. One thing to know before touching `src/engine/`: it is a hand-kept copy of the response engine Mockfly runs in production, and behavior parity is the whole point of this tool — any divergence from how the cloud answers the same request is a bug, not an improvement. New features are best proposed in an issue first.
+
+## License
+
+[MIT](LICENSE)
