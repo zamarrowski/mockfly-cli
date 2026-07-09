@@ -45,6 +45,12 @@ All commands accept `--dir <dir>` to use a workspace other than `./mockfly`.
 - Endpoints configured as proxies are served as mocks (there is no network offline); a note is printed.
 - Requests are logged to stdout instead of the cloud dashboard.
 
+## Security notes
+
+- `mockfly login` stores your API key in plaintext at `~/.mockfly/config.json` (file mode `600`), like `~/.npmrc` or `~/.aws/credentials`. Use `mockfly logout` to remove it, and revoke keys from the Mockfly dashboard.
+- Pulled files in `./mockfly/` include your project **environment variables**. If those hold secrets, add the workspace to `.gitignore` before committing — sharing the files shares the secrets.
+- The local server binds to all interfaces like any Express app; it is meant for local development, not for exposing to the internet.
+
 ## Configuration
 
 | | |

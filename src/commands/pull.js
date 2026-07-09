@@ -35,15 +35,25 @@ export const pull = async (slugs, options) => {
 
   console.log(dim(`Pulling ${targets.length} project${targets.length === 1 ? '' : 's'} into ${dir}`))
 
+  let pulledEnvVars = false
+
   for (const target of targets) {
     try {
       const payload = await fetchProjectExport(auth, target._id)
       const file = saveProject(dir, payload)
       const endpoints = payload.endpoints?.length || 0
+      if (Object.keys(payload.environment || {}).length) pulledEnvVars = true
       console.log(green(`✔ ${target.name}`) + dim(` — ${endpoints} endpoint${endpoints === 1 ? '' : 's'} → ${path.basename(file)}`))
     } catch (error) {
       console.log(yellow(`⚠ ${target.name}: ${error.message}`))
     }
+  }
+
+  if (pulledEnvVars) {
+    console.log(
+      yellow('\n⚠ These files include your project environment variables.') +
+        dim(' If they hold secrets, keep the workspace out of version control (add it to .gitignore).')
+    )
   }
 
   console.log(dim('\nRun `mockfly serve` to mock these APIs offline.'))
