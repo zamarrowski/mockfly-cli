@@ -21,11 +21,13 @@
     "src",
     "assets"
   ],
+  "packageManager": "yarn@4.11.0",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
-    "test": "node --test 'tests/**/*.test.js'"
+    "test": "node --test tests/*.test.js",
+    "coverage": "node --test --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-lines=75 --test-coverage-branches=73 --test-coverage-functions=69 tests/*.test.js"
   },
   "keywords": [
     "mock",

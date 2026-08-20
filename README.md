@@ -73,7 +73,12 @@ Snapshots live in `~/.mockfly/projects` by default, out of your working director
 ```bash
 yarn install
 yarn test        # node --test: engine unit tests + e2e against a real local server
+yarn coverage    # same tests with coverage thresholds over src/** (needs Node 22+)
 ```
+
+CI runs `yarn test` on Node 18, 20, 22 and 24, and `yarn coverage` on the newest of
+them. `bin/mockfly.js` is out of the coverage denominator on purpose — it only runs
+as a subprocess, where V8 collects nothing — but it still gets a smoke test.
 
 ## Contributing
 
