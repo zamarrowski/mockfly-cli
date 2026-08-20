@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   FILTERS,
+  RULE_COMPARATORS,
   applyFilters,
   evaluateRule,
   getFakerFn,
@@ -166,6 +167,149 @@ describe('evaluateRule', () => {
     const rule = { source: 'cookie', property: 'session', comparator: 'equal', value: 'abc' }
 
     assert.equal(evaluate(rule), false)
+  })
+})
+
+describe('jsonPath rules', () => {
+  const requestBody = {
+    items: [
+      { sku: 'A-1', price: 5 },
+      { sku: 'B-2', price: 50 },
+    ],
+  }
+  const evaluate = (rule, body = requestBody) =>
+    evaluateRule({ rule, requestBody: body, query: {}, headers: {}, urlParams: {} })
+
+  it('indexes into an array', () => {
+    const rule = { source: 'jsonPath', property: '$.items[0].sku', comparator: 'equal', value: 'A-1' }
+
+    assert.equal(evaluate(rule), true)
+    assert.equal(evaluate({ ...rule, value: 'B-2' }), false)
+  })
+
+  it('matches when any of the values a wildcard selects matches', () => {
+    const rule = { source: 'jsonPath', property: '$.items[*].sku', comparator: 'equal', value: 'B-2' }
+
+    assert.equal(evaluate(rule), true)
+    assert.equal(evaluate({ ...rule, value: 'C-3' }), false)
+  })
+
+  it('supports a filter expression', () => {
+    const rule = { source: 'jsonPath', property: '$.items[?(@.price>10)].sku', comparator: 'equal', value: 'B-2' }
+
+    assert.equal(evaluate(rule), true)
+  })
+
+  it('evaluates an expression that selects nothing against an undefined value', () => {
+    const property = '$.items[5].sku'
+
+    assert.equal(evaluate({ source: 'jsonPath', property, comparator: 'exists' }), false)
+    assert.equal(evaluate({ source: 'jsonPath', property, comparator: 'notExists' }), true)
+  })
+
+  it('does not match when the request body is not an object', () => {
+    const rule = { source: 'jsonPath', property: '$.items[0].sku', comparator: 'equal', value: 'A-1' }
+
+    assert.equal(evaluate(rule, '<root/>'), false)
+    assert.equal(evaluate(rule, null), false)
+  })
+
+  it('does not match when the expression does not parse', () => {
+    const rule = { source: 'jsonPath', property: '$.items[?(@.price>)]', comparator: 'exists' }
+
+    assert.equal(evaluate(rule), false)
+  })
+
+  it('does not match with an unknown comparator', () => {
+    const rule = { source: 'jsonPath', property: '$.items[0].sku', comparator: 'whatever', value: 'A-1' }
+
+    assert.equal(evaluate(rule), false)
+  })
+})
+
+describe('rule comparators', () => {
+  const compare = (comparator, value, expected) => RULE_COMPARATORS[comparator](value, expected)
+
+  it('compares substrings with contains and notContains', () => {
+    assert.equal(compare('contains', 'sergio@mockfly.dev', 'mockfly'), true)
+    assert.equal(compare('contains', 'sergio@mockfly.dev', 'other'), false)
+    assert.equal(compare('notContains', 'sergio@mockfly.dev', 'other'), true)
+    assert.equal(compare('notContains', 'sergio@mockfly.dev', 'mockfly'), false)
+  })
+
+  it('treats a missing value as an empty string when comparing substrings', () => {
+    assert.equal(compare('contains', undefined, 'mockfly'), false)
+    assert.equal(compare('notContains', null, 'mockfly'), true)
+  })
+
+  it('compares prefixes and suffixes', () => {
+    assert.equal(compare('startsWith', 'mf_1234', 'mf_'), true)
+    assert.equal(compare('startsWith', 'sk_1234', 'mf_'), false)
+    assert.equal(compare('endsWith', 'sergio@empresa.com', '@empresa.com'), true)
+    assert.equal(compare('endsWith', 'sergio@otra.com', '@empresa.com'), false)
+  })
+
+  it('matches a regular expression', () => {
+    assert.equal(compare('regex', 'user-42', '^user-\\d+$'), true)
+    assert.equal(compare('regex', 'user-abc', '^user-\\d+$'), false)
+  })
+
+  it('does not match a regular expression that does not compile', () => {
+    assert.equal(compare('regex', 'user-42', '^(user'), false)
+  })
+
+  // The reason the regex runs inside vm2 with a timeout: without it this call would
+  // block the server for years instead of returning false in a few milliseconds.
+  it('gives up instead of hanging on a catastrophic regular expression', () => {
+    const start = Date.now()
+
+    assert.equal(compare('regex', `${'a'.repeat(40)}b`, '^(a+)+$'), false)
+    assert.ok(Date.now() - start < 1000)
+  })
+
+  it('compares numbers, coercing strings', () => {
+    assert.equal(compare('greaterThan', '150', 100), true)
+    assert.equal(compare('greaterThan', 100, 100), false)
+    assert.equal(compare('greaterOrEqual', 100, 100), true)
+    assert.equal(compare('lessThan', 50, '100'), true)
+    assert.equal(compare('lessThan', 100, 50), false)
+    assert.equal(compare('lessOrEqual', 100, 100), true)
+  })
+
+  it('does not match a numeric comparator when either side is not a number', () => {
+    assert.equal(compare('greaterThan', 'ten', 5), false)
+    assert.equal(compare('greaterThan', undefined, 5), false)
+    assert.equal(compare('greaterThan', null, 5), false)
+    assert.equal(compare('greaterThan', '', 5), false)
+    assert.equal(compare('lessThan', 5, 'ten'), false)
+  })
+
+  it('compares against zero', () => {
+    assert.equal(compare('greaterThan', 1, 0), true)
+    assert.equal(compare('lessOrEqual', 0, 0), true)
+  })
+
+  it('checks presence with exists and notExists', () => {
+    assert.equal(compare('exists', 'anything'), true)
+    assert.equal(compare('exists', ''), true)
+    assert.equal(compare('exists', 0), true)
+    assert.equal(compare('exists', undefined), false)
+    assert.equal(compare('exists', null), false)
+    assert.equal(compare('notExists', undefined), true)
+    assert.equal(compare('notExists', 'anything'), false)
+  })
+
+  it('checks emptiness with isEmpty and isNotEmpty', () => {
+    assert.equal(compare('isEmpty', ''), true)
+    assert.equal(compare('isEmpty', '   '), true)
+    assert.equal(compare('isEmpty', []), true)
+    assert.equal(compare('isEmpty', {}), true)
+    assert.equal(compare('isEmpty', undefined), true)
+    assert.equal(compare('isEmpty', 'sergio'), false)
+    assert.equal(compare('isEmpty', 0), false)
+    assert.equal(compare('isNotEmpty', 'sergio'), true)
+    assert.equal(compare('isNotEmpty', [1]), true)
+    assert.equal(compare('isNotEmpty', ''), false)
   })
 })
 
@@ -506,9 +650,16 @@ describe('rule sources and comparators', () => {
   })
 
   it('ignores an unknown comparator', () => {
+    const rule = { source: 'queryString', property: 't', comparator: 'whatever', value: 'a' }
+
+    assert.equal(match(rule, { query: { t: 'a' } }), null)
+  })
+
+  it('matches the comparators the backend added on top of equal, distinct and includes', () => {
     const rule = { source: 'queryString', property: 't', comparator: 'startsWith', value: 'a' }
 
-    assert.equal(match(rule, { query: { t: 'ab' } }), null)
+    assert.equal(match(rule, { query: { t: 'ab' } })?.name, 'matched')
+    assert.equal(match(rule, { query: { t: 'ba' } }), null)
   })
 
   it('tolerates responses without rules', () => {

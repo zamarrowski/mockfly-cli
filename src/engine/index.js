@@ -1,14 +1,21 @@
-// Mirrors mockfly-backend: the pure (no DB, no network) parts of src/mocks/domain.js
-// and the content-type helpers of src/endpoints/domain.js. Function bodies are kept
-// verbatim so local responses match production. Adaptations for offline use:
+// Mirrors mockfly-backend: the pure (no DB, no network) parts of src/mocks/domain.js,
+// the content-type helpers of src/endpoints/domain.js and the two rule primitives of
+// src/responses/domain.js the engine needs. Function bodies are kept verbatim so local
+// responses match production. Adaptations for offline use:
 //   - no Mongo: `getResponse` returns the matched response object directly instead of
 //     an ObjectId (`defaultResponse` is resolved to an object by the workspace loader).
 //   - no caches, request counters, proxy or DB logging.
 import { faker } from '@faker-js/faker'
 import { DOMParser } from 'xmldom'
 import xpath from 'xpath'
-import { allowedRuleComparators, allowedRuleSources, ALLOWED_XML_CONTENT_TYPE_HEADER_VALES } from './constants.js'
-import { evalCode } from './vm.js'
+import { JSONPath } from 'jsonpath-plus'
+import {
+  allowedRuleComparators,
+  allowedRuleSources,
+  ALLOWED_XML_CONTENT_TYPE_HEADER_VALES,
+  JSON_PATH_EVAL_MODE,
+} from './constants.js'
+import { evalCode, matchesRegex } from './vm.js'
 
 export const queryParamsToString = query => {
   if (query) {
@@ -182,10 +189,64 @@ const isValueInCommaSeparatedList = (value, list) => {
   return Boolean(items.find(item => item == value))
 }
 
+const asString = value => (value === undefined || value === null ? '' : String(value))
+
+const isEmptyValue = value => {
+  if (value === undefined || value === null) return true
+
+  if (typeof value === 'string') return value.trim() === ''
+
+  if (Array.isArray(value)) return value.length === 0
+
+  if (typeof value === 'object') return Object.keys(value).length === 0
+
+  return false
+}
+
+// From the backend's src/responses/domain.js: the CLI serves rules the backend has
+// already validated, so only these two primitives of that module are ported.
+export const resolveJsonPathValues = (json, path) => {
+  if (typeof json !== 'object' || json === null) return []
+
+  try {
+    return JSONPath({ path, json, wrap: true, eval: JSON_PATH_EVAL_MODE })
+  } catch {
+    return []
+  }
+}
+
+export const toRuleNumber = value => {
+  if (value === undefined || value === null || value === '') return NaN
+
+  return Number(value)
+}
+
+const buildNumericComparator = compare => (value, expected) => {
+  const number = toRuleNumber(value)
+  const expectedNumber = toRuleNumber(expected)
+
+  if (!Number.isFinite(number) || !Number.isFinite(expectedNumber)) return false
+
+  return compare(number, expectedNumber)
+}
+
 export const RULE_COMPARATORS = {
-  [allowedRuleComparators.equal]: (value, expectedValue) => value == expectedValue,
-  [allowedRuleComparators.distinct]: (value, expectedValue) => value != expectedValue,
-  [allowedRuleComparators.includes]: (value, expectedValue) => isValueInCommaSeparatedList(value, expectedValue),
+  [allowedRuleComparators.equal]: (value, expected) => value == expected,
+  [allowedRuleComparators.distinct]: (value, expected) => value != expected,
+  [allowedRuleComparators.includes]: (value, expected) => isValueInCommaSeparatedList(value, expected),
+  [allowedRuleComparators.contains]: (value, expected) => asString(value).includes(asString(expected)),
+  [allowedRuleComparators.notContains]: (value, expected) => !asString(value).includes(asString(expected)),
+  [allowedRuleComparators.startsWith]: (value, expected) => asString(value).startsWith(asString(expected)),
+  [allowedRuleComparators.endsWith]: (value, expected) => asString(value).endsWith(asString(expected)),
+  [allowedRuleComparators.regex]: (value, expected) => matchesRegex(asString(expected), asString(value)),
+  [allowedRuleComparators.greaterThan]: buildNumericComparator((number, expected) => number > expected),
+  [allowedRuleComparators.greaterOrEqual]: buildNumericComparator((number, expected) => number >= expected),
+  [allowedRuleComparators.lessThan]: buildNumericComparator((number, expected) => number < expected),
+  [allowedRuleComparators.lessOrEqual]: buildNumericComparator((number, expected) => number <= expected),
+  [allowedRuleComparators.exists]: value => value !== undefined && value !== null,
+  [allowedRuleComparators.notExists]: value => value === undefined || value === null,
+  [allowedRuleComparators.isEmpty]: value => isEmptyValue(value),
+  [allowedRuleComparators.isNotEmpty]: value => !isEmptyValue(value),
 }
 
 export const getRuleSourceValue = ({ rule, requestBody, query, headers, urlParams }) => {
@@ -198,6 +259,18 @@ export const getRuleSourceValue = ({ rule, requestBody, query, headers, urlParam
   if (rule.source === allowedRuleSources.urlParam) return urlParams[rule.property]
 
   return null
+}
+
+const evaluateJsonPathRule = (rule, requestBody) => {
+  const compare = RULE_COMPARATORS[rule.comparator]
+
+  if (!compare) return false
+
+  const values = resolveJsonPathValues(requestBody, rule.property)
+
+  if (!values.length) return compare(undefined, rule.value)
+
+  return values.some(value => compare(value, rule.value))
 }
 
 const evaluateXmlTagRule = (rule, requestBody, endpointHeaders) => {
@@ -237,6 +310,8 @@ const evaluateXPathRule = (rule, requestBody) => {
 
 export const evaluateRule = ({ rule, requestBody, query, headers, urlParams, endpointHeaders }) => {
   if (rule.source === allowedRuleSources.xmlTag) return evaluateXmlTagRule(rule, requestBody, endpointHeaders)
+
+  if (rule.source === allowedRuleSources.jsonPath) return evaluateJsonPathRule(rule, requestBody)
 
   const propertyValue = getRuleSourceValue({ rule, requestBody, query, headers, urlParams })
   const compare = RULE_COMPARATORS[rule.comparator]
