@@ -8,6 +8,35 @@ import path from 'path'
 // nothing ever reaches the real ~/.mockfly.
 export const tempDir = (prefix = 'mockfly-test-') => fs.mkdtempSync(path.join(os.tmpdir(), prefix))
 
+export class ProcessExited extends Error {
+  constructor(code) {
+    super(`process.exit(${code})`)
+    this.name = 'ProcessExited'
+    this.code = code
+  }
+}
+
+// `fail()` calls process.exit(1), which would take the test runner down with it.
+// Throwing keeps the caller's control flow faithful to a real exit (nothing after
+// the fail() runs); pass { throwOnExit: false } for the few call sites that are
+// reached from an event handler, where a throw would escape as uncaught.
+export const stubExit = ({ throwOnExit = true } = {}) => {
+  const original = process.exit
+  const codes = []
+
+  process.exit = code => {
+    codes.push(code)
+    if (throwOnExit) throw new ProcessExited(code)
+  }
+
+  return {
+    codes,
+    restore: () => {
+      process.exit = original
+    },
+  }
+}
+
 export const captureConsole = () => {
   const originalLog = console.log
   const originalError = console.error

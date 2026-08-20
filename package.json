@@ -27,7 +27,7 @@
   },
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "coverage": "node --test --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-lines=79 --test-coverage-branches=80 --test-coverage-functions=78 tests/*.test.js"
+    "coverage": "node --test --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-lines=82 --test-coverage-branches=82 --test-coverage-functions=82 tests/*.test.js"
   },
   "keywords": [
     "mock",
