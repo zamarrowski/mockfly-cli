@@ -14,6 +14,8 @@ import {
   allowedRuleSources,
   ALLOWED_XML_CONTENT_TYPE_HEADER_VALES,
   JSON_PATH_EVAL_MODE,
+  MAX_RULE_GROUP_DEPTH,
+  ruleGroupOperators,
 } from './constants.js'
 import { evalCode, matchesRegex } from './vm.js'
 
@@ -323,6 +325,34 @@ export const evaluateRule = ({ rule, requestBody, query, headers, urlParams, end
   return false
 }
 
+export const isRuleGroup = node => Array.isArray(node?.conditions)
+
+const evaluateRuleGroupCondition = (condition, context, depth) => {
+  if (isRuleGroup(condition)) return evaluateRuleGroup(condition, context, depth)
+
+  return evaluateRule({ rule: condition, ...context })
+}
+
+const evaluateRuleGroup = (group, context, depth) => {
+  if (depth > MAX_RULE_GROUP_DEPTH || !group.conditions.length) return false
+
+  if (group.operator === ruleGroupOperators.or) {
+    return group.conditions.some(condition => evaluateRuleGroupCondition(condition, context, depth + 1))
+  }
+
+  return group.conditions.every(condition => evaluateRuleGroupCondition(condition, context, depth + 1))
+}
+
+export const matchesRule = (rule, context) => {
+  if (isRuleGroup(rule)) return evaluateRuleGroup(rule, context, 1)
+
+  const mainRuleMatch = evaluateRule({ rule, ...context })
+
+  if (!rule?.andConditions?.length) return mainRuleMatch
+
+  return mainRuleMatch && rule.andConditions.every(condition => evaluateRule({ rule: condition, ...context }))
+}
+
 export const getResponseThatMatchWithARule = (
   requestBody,
   query = {},
@@ -332,21 +362,11 @@ export const getResponseThatMatchWithARule = (
   endpointHeaders = []
 ) => {
   let matchedResponse = null
+  const context = { requestBody, query, headers, urlParams, endpointHeaders }
 
   responses?.forEach(response => {
     response?.rules?.forEach(rule => {
-      const mainRuleMatch = evaluateRule({ rule, requestBody, query, headers, urlParams, endpointHeaders })
-
-      let andConditionsMatch = true
-      if (rule?.andConditions?.length > 0) {
-        andConditionsMatch = rule.andConditions.every(cond =>
-          evaluateRule({ rule: cond, requestBody, query, headers, urlParams, endpointHeaders })
-        )
-      }
-
-      if (mainRuleMatch && andConditionsMatch) {
-        matchedResponse = response
-      }
+      if (matchesRule(rule, context)) matchedResponse = response
     })
   })
 

@@ -34,6 +34,13 @@ export const allowedRuleSources = {
 // jsep instead of eval: a filter expression cannot reach eval, Function or a global.
 export const JSON_PATH_EVAL_MODE = 'safe'
 
+export const ruleGroupOperators = {
+  and: 'and',
+  or: 'or',
+}
+
+export const MAX_RULE_GROUP_DEPTH = 3
+
 export const ALLOWED_XML_CONTENT_TYPE_HEADER_VALES = ['application/xml', 'text/xml; charset=utf-8', 'text/xml']
 
 export const PROXY_CONFIGURATION_VALUES = {

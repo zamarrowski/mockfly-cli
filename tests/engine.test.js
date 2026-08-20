@@ -16,6 +16,7 @@ import {
   isContentTypePDF,
   isContentTypeXML,
   matchPath,
+  matchesRule,
   parseFakerBody,
   queryParamsToString,
   replaceBodyWithEnvVars,
@@ -105,6 +106,25 @@ describe('rules', () => {
 
   it('returns null when no rule matches', () => {
     assert.equal(getResponseThatMatchWithARule({}, {}, {}, {}, [adminResponse, queryResponse]), null)
+  })
+
+  it('serves the response of an or group when any of its conditions matches', () => {
+    const response = {
+      name: 'spain',
+      rules: [
+        {
+          operator: 'or',
+          conditions: [
+            { source: 'header', property: 'x-country', comparator: 'equal', value: 'ES' },
+            { source: 'queryString', property: 'country', comparator: 'equal', value: 'ES' },
+          ],
+        },
+      ],
+    }
+
+    assert.equal(getResponseThatMatchWithARule(null, { country: 'ES' }, {}, {}, [response])?.name, 'spain')
+    assert.equal(getResponseThatMatchWithARule(null, {}, { 'x-country': 'ES' }, {}, [response])?.name, 'spain')
+    assert.equal(getResponseThatMatchWithARule(null, { country: 'FR' }, {}, {}, [response]), null)
   })
 })
 
@@ -310,6 +330,71 @@ describe('rule comparators', () => {
     assert.equal(compare('isNotEmpty', 'sergio'), true)
     assert.equal(compare('isNotEmpty', [1]), true)
     assert.equal(compare('isNotEmpty', ''), false)
+  })
+})
+
+describe('rule groups', () => {
+  const context = { requestBody: { total: 150 }, query: { env: 'pro' }, headers: {}, urlParams: {} }
+  const totalOver100 = { source: 'body', property: 'total', comparator: 'greaterThan', value: 100 }
+  const envIsPro = { source: 'queryString', property: 'env', comparator: 'equal', value: 'pro' }
+  const envIsDev = { source: 'queryString', property: 'env', comparator: 'equal', value: 'dev' }
+
+  it('evaluates a flat rule with no conditions', () => {
+    assert.equal(matchesRule(totalOver100, context), true)
+    assert.equal(matchesRule(envIsDev, context), false)
+  })
+
+  it('keeps evaluating the old andConditions format', () => {
+    assert.equal(matchesRule({ ...totalOver100, andConditions: [envIsPro] }, context), true)
+    assert.equal(matchesRule({ ...totalOver100, andConditions: [envIsDev] }, context), false)
+    assert.equal(matchesRule({ ...envIsDev, andConditions: [envIsPro] }, context), false)
+  })
+
+  it('matches an or group when any condition matches', () => {
+    assert.equal(matchesRule({ operator: 'or', conditions: [envIsDev, totalOver100] }, context), true)
+    assert.equal(
+      matchesRule({ operator: 'or', conditions: [envIsDev, { ...totalOver100, value: 500 }] }, context),
+      false
+    )
+  })
+
+  it('matches an and group only when every condition matches', () => {
+    assert.equal(matchesRule({ operator: 'and', conditions: [envIsPro, totalOver100] }, context), true)
+    assert.equal(matchesRule({ operator: 'and', conditions: [envIsDev, totalOver100] }, context), false)
+  })
+
+  it('evaluates a group nested inside another group', () => {
+    const group = {
+      operator: 'and',
+      conditions: [totalOver100, { operator: 'or', conditions: [envIsDev, envIsPro] }],
+    }
+
+    assert.equal(matchesRule(group, context), true)
+    assert.equal(matchesRule({ ...group, conditions: [envIsDev, group.conditions[1]] }, context), false)
+  })
+
+  it('does not match a group with no conditions', () => {
+    assert.equal(matchesRule({ operator: 'and', conditions: [] }, context), false)
+    assert.equal(matchesRule({ operator: 'or', conditions: [] }, context), false)
+  })
+
+  it('treats an unknown operator as and', () => {
+    assert.equal(matchesRule({ operator: 'nope', conditions: [envIsPro, totalOver100] }, context), true)
+    assert.equal(matchesRule({ operator: 'nope', conditions: [envIsDev, totalOver100] }, context), false)
+  })
+
+  it('does not match a group nested deeper than the allowed depth', () => {
+    const tooDeep = {
+      operator: 'and',
+      conditions: [
+        {
+          operator: 'and',
+          conditions: [{ operator: 'and', conditions: [{ operator: 'and', conditions: [envIsPro] }] }],
+        },
+      ],
+    }
+
+    assert.equal(matchesRule(tooDeep, context), false)
   })
 })
 
