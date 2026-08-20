@@ -174,85 +174,76 @@ export const getNestedValue = (obj, path) => {
   return currentObj
 }
 
-const evaluateRule = ({ rule, requestBody, query, headers, urlParams, endpointHeaders }) => {
-  let propertyValue = null
+const isValueInCommaSeparatedList = (value, list) => {
+  if (typeof list !== 'string') return false
 
-  if (rule.source === allowedRuleSources.body) {
-    propertyValue = getNestedValue(requestBody, rule.property)
-  }
+  const items = list.split(',').map(item => item.trim())
 
-  if (rule.source === allowedRuleSources.queryString) {
-    propertyValue = query[rule.property]
-  }
+  return Boolean(items.find(item => item == value))
+}
 
-  if (rule.source === allowedRuleSources.header) {
-    propertyValue = headers[rule.property.toLowerCase()] || headers[rule.property]
-  }
+export const RULE_COMPARATORS = {
+  [allowedRuleComparators.equal]: (value, expectedValue) => value == expectedValue,
+  [allowedRuleComparators.distinct]: (value, expectedValue) => value != expectedValue,
+  [allowedRuleComparators.includes]: (value, expectedValue) => isValueInCommaSeparatedList(value, expectedValue),
+}
 
-  if (rule.source === allowedRuleSources.urlParam) {
-    propertyValue = urlParams[rule.property]
-  }
+export const getRuleSourceValue = ({ rule, requestBody, query, headers, urlParams }) => {
+  if (rule.source === allowedRuleSources.body) return getNestedValue(requestBody, rule.property)
 
-  if (
-    rule.comparator === allowedRuleComparators.equal &&
-    propertyValue == rule.value &&
-    rule.source !== allowedRuleSources.xmlTag
-  ) {
-    return true
-  }
+  if (rule.source === allowedRuleSources.queryString) return query[rule.property]
 
-  if (
-    rule.comparator === allowedRuleComparators.distinct &&
-    propertyValue != rule.value &&
-    rule.source !== allowedRuleSources.xmlTag
-  ) {
-    return true
-  }
+  if (rule.source === allowedRuleSources.header) return headers[rule.property.toLowerCase()] || headers[rule.property]
 
-  if (
-    rule.comparator === allowedRuleComparators.includes &&
-    rule.value &&
-    typeof rule.value === 'string' &&
-    rule.value
-      .split(',')
-      .map(item => item.trim())
-      .find(item => item == propertyValue) &&
-    rule.source !== allowedRuleSources.xmlTag
-  ) {
-    return true
-  }
+  if (rule.source === allowedRuleSources.urlParam) return urlParams[rule.property]
 
-  if (isContentTypeXML(endpointHeaders) && rule.source === allowedRuleSources.xmlTag) {
-    const tagName = rule.value
-    const xml = new DOMParser().parseFromString(requestBody)
+  return null
+}
 
-    if (xml) {
-      const existsTag = xml.getElementsByTagName(tagName).length > 0
+const evaluateXmlTagRule = (rule, requestBody, endpointHeaders) => {
+  if (!isContentTypeXML(endpointHeaders)) return false
 
-      if (rule.comparator === allowedRuleComparators.equal && existsTag) {
-        return true
-      }
+  const xml = new DOMParser().parseFromString(requestBody)
 
-      if (rule.comparator === allowedRuleComparators.distinct && !existsTag) {
-        return true
-      }
-    }
-  }
+  if (!xml) return false
 
-  if (
-    isContentTypeXML(endpointHeaders) &&
+  const existsTag = xml.getElementsByTagName(rule.value).length > 0
+
+  if (rule.comparator === allowedRuleComparators.equal) return existsTag
+
+  if (rule.comparator === allowedRuleComparators.distinct) return !existsTag
+
+  return false
+}
+
+const isXPathRuleOnXmlBody = (rule, requestBody, endpointHeaders) => {
+  return (
     rule.source === allowedRuleSources.xPath &&
-    requestBody &&
-    typeof requestBody === 'string'
-  ) {
-    const xml = new DOMParser().parseFromString(requestBody)
+    isContentTypeXML(endpointHeaders) &&
+    typeof requestBody === 'string' &&
+    requestBody.length > 0
+  )
+}
 
-    if (xml) {
-      const found = xpath.select(rule.value, xml)
+const evaluateXPathRule = (rule, requestBody) => {
+  const xml = new DOMParser().parseFromString(requestBody)
 
-      return found && found.length > 0
-    }
-  }
+  if (!xml) return false
+
+  const found = xpath.select(rule.value, xml)
+
+  return Boolean(found && found.length > 0)
+}
+
+export const evaluateRule = ({ rule, requestBody, query, headers, urlParams, endpointHeaders }) => {
+  if (rule.source === allowedRuleSources.xmlTag) return evaluateXmlTagRule(rule, requestBody, endpointHeaders)
+
+  const propertyValue = getRuleSourceValue({ rule, requestBody, query, headers, urlParams })
+  const compare = RULE_COMPARATORS[rule.comparator]
+
+  if (compare && compare(propertyValue, rule.value)) return true
+
+  if (isXPathRuleOnXmlBody(rule, requestBody, endpointHeaders)) return evaluateXPathRule(rule, requestBody)
 
   return false
 }

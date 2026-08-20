@@ -3,6 +3,7 @@ import { describe, it } from 'node:test'
 import {
   FILTERS,
   applyFilters,
+  evaluateRule,
   getFakerFn,
   getNestedValue,
   getRandomResponse,
@@ -89,6 +90,82 @@ describe('rules', () => {
     }
     assert.equal(getResponseThatMatchWithARule({}, { a: '1', b: '2' }, {}, {}, [response])?.name, 'both')
     assert.equal(getResponseThatMatchWithARule({}, { a: '1', b: '3' }, {}, {}, [response]), null)
+  })
+
+  it('returns the last matching response when several match', () => {
+    const rule = { source: 'body', property: 'user.role', comparator: 'equal', value: 'admin' }
+    const responses = [
+      { name: 'first', rules: [rule] },
+      { name: 'second', rules: [rule] },
+    ]
+
+    assert.equal(getResponseThatMatchWithARule({ user: { role: 'admin' } }, {}, {}, {}, responses)?.name, 'second')
+  })
+
+  it('returns null when no rule matches', () => {
+    assert.equal(getResponseThatMatchWithARule({}, {}, {}, {}, [adminResponse, queryResponse]), null)
+  })
+})
+
+describe('evaluateRule', () => {
+  const evaluate = (rule, context = {}) =>
+    evaluateRule({ rule, requestBody: null, query: {}, headers: {}, urlParams: {}, ...context })
+
+  it('compares a nested body property with equal', () => {
+    const rule = { source: 'body', property: 'user.name', comparator: 'equal', value: 'sergio' }
+
+    assert.equal(evaluate(rule, { requestBody: { user: { name: 'sergio' } } }), true)
+    assert.equal(evaluate(rule, { requestBody: { user: { name: 'angela' } } }), false)
+  })
+
+  it('compares loosely, so a numeric body value matches a string rule value', () => {
+    const rule = { source: 'body', property: 'total', comparator: 'equal', value: '100' }
+
+    assert.equal(evaluate(rule, { requestBody: { total: 100 } }), true)
+  })
+
+  it('matches distinct when the body property is missing', () => {
+    const rule = { source: 'body', property: 'missing', comparator: 'distinct', value: 'sergio' }
+
+    assert.equal(evaluate(rule, { requestBody: {} }), true)
+  })
+
+  it('treats includes as membership in a comma separated list', () => {
+    const rule = { source: 'queryString', property: 'env', comparator: 'includes', value: 'pro, pre , dev' }
+
+    assert.equal(evaluate(rule, { query: { env: 'pre' } }), true)
+    assert.equal(evaluate(rule, { query: { env: 'p' } }), false)
+  })
+
+  it('does not match includes when the rule value is not a list', () => {
+    const rule = { source: 'queryString', property: 'env', comparator: 'includes', value: ['pro'] }
+
+    assert.equal(evaluate(rule, { query: { env: 'pro' } }), false)
+  })
+
+  it('reads a header ignoring the case of the property', () => {
+    const rule = { source: 'header', property: 'X-Country', comparator: 'equal', value: 'ES' }
+
+    assert.equal(evaluate(rule, { headers: { 'x-country': 'ES' } }), true)
+    assert.equal(evaluate(rule, { headers: { 'X-Country': 'ES' } }), true)
+  })
+
+  it('reads a url param', () => {
+    const rule = { source: 'urlParam', property: 'id', comparator: 'equal', value: '3' }
+
+    assert.equal(evaluate(rule, { urlParams: { id: '3' } }), true)
+  })
+
+  it('returns false for an unknown comparator', () => {
+    const rule = { source: 'body', property: 'name', comparator: 'whatever', value: 'sergio' }
+
+    assert.equal(evaluate(rule, { requestBody: { name: 'sergio' } }), false)
+  })
+
+  it('returns false for an unknown source', () => {
+    const rule = { source: 'cookie', property: 'session', comparator: 'equal', value: 'abc' }
+
+    assert.equal(evaluate(rule), false)
   })
 })
 
@@ -492,6 +569,33 @@ describe('xml rules', () => {
 
     assert.equal(match(rule, { Item: 1 }), null)
     assert.equal(match(rule, undefined), null)
+  })
+
+  it('ignores an xPath rule when the request body is an empty string', () => {
+    const rule = { source: 'xPath', comparator: 'equal', value: '//Item' }
+
+    assert.equal(match(rule, ''), null)
+  })
+
+  // Pinned, not endorsed: `null != '//Item'` is true before the expression is ever
+  // evaluated, so this rule matches every request. The backend does the same and
+  // parity beats fixing it here.
+  it('matches every request for an xPath rule with distinct, as the backend does', () => {
+    const rule = { source: 'xPath', comparator: 'distinct', value: '//Item' }
+
+    assert.equal(match(rule, '<root/>')?.name, 'matched')
+    assert.equal(match(rule, '<root><Item>1</Item></root>')?.name, 'matched')
+  })
+
+  it('ignores an xmlTag rule with a comparator other than equal or distinct', () => {
+    const rule = { source: 'xmlTag', comparator: 'includes', value: 'Item' }
+
+    assert.equal(match(rule, '<root><Item>1</Item></root>'), null)
+  })
+
+  it('ignores an xml rule when the body does not parse as xml', () => {
+    assert.equal(match({ source: 'xmlTag', comparator: 'equal', value: 'Item' }, ''), null)
+    assert.equal(match({ source: 'xmlTag', comparator: 'distinct', value: 'Item' }, ''), null)
   })
 })
 
