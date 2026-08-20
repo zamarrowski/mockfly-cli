@@ -130,7 +130,7 @@ describe('placeholders', () => {
   })
 
   it('uses default filter on missing values', () => {
-    const body = replaceBodyWithRequestBody({ name: "{{body.missing | default:anon}}" }, {})
+    const body = replaceBodyWithRequestBody({ name: '{{body.missing | default:anon}}' }, {})
     assert.deepEqual(body, { name: 'anon' })
   })
 

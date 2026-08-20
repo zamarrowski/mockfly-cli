@@ -187,10 +187,7 @@ describe('whoami', () => {
 
     whoami()
 
-    assert.deepEqual(console_.out, [
-      'API key: mf_from_env… (env MOCKFLY_API_KEY)',
-      'API url: https://api.mockfly.dev',
-    ])
+    assert.deepEqual(console_.out, ['API key: mf_from_env… (env MOCKFLY_API_KEY)', 'API url: https://api.mockfly.dev'])
   })
 
   it('credits the config file when both are set, and shows the winning key', async () => {

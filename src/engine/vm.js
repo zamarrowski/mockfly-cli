@@ -9,7 +9,7 @@ export const evalCode = code => {
     })
 
     return vm.run(code)
-  } catch (error) {
+  } catch {
     return code
   }
 }

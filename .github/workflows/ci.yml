@@ -6,6 +6,21 @@ on:
   pull_request:
 
 jobs:
+  # The same two checks .githooks/pre-commit runs, so a commit that passed the
+  # hook cannot fail here. Node-version independent, hence its own job.
+  lint:
+    name: lint and format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: yarn install --immutable
+      - run: yarn lint
+      - run: yarn format:check
+
   test:
     name: test (node ${{ matrix.node }})
     runs-on: ubuntu-latest

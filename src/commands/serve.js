@@ -14,13 +14,22 @@ export const serve = options => {
   const app = createApp(projects)
 
   const server = app.listen(port, () => {
-    console.log(`\n${bold('Mockfly')} serving ${projects.length} project${projects.length === 1 ? '' : 's'} on ${cyan(`http://localhost:${port}`)}\n`)
+    console.log(
+      `\n${bold('Mockfly')} serving ${projects.length} project${projects.length === 1 ? '' : 's'} on ${cyan(
+        `http://localhost:${port}`
+      )}\n`
+    )
 
     for (const project of projects) {
       const age = timeAgo(project.pulledAt)
-      const staleness = age.endsWith('d ago') && parseInt(age) >= 7 ? yellow(` (pulled ${age} — consider re-pulling)`) : dim(` (pulled ${age})`)
+      const staleness =
+        age.endsWith('d ago') && parseInt(age) >= 7
+          ? yellow(` (pulled ${age} — consider re-pulling)`)
+          : dim(` (pulled ${age})`)
       console.log(`  ${bold(project.name.padEnd(24))} ${cyan(`http://localhost:${port}/${project.alias}`)}${staleness}`)
-      console.log(dim(`  ${''.padEnd(24)} http://localhost:${port}/${project.slug} — ${project.endpoints.length} endpoints`))
+      console.log(
+        dim(`  ${''.padEnd(24)} http://localhost:${port}/${project.slug} — ${project.endpoints.length} endpoints`)
+      )
     }
 
     console.log(dim('\nRequests:\n'))

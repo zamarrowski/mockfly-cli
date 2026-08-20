@@ -77,7 +77,10 @@ describe('serve (offline mock server)', () => {
   let base
 
   before(async () => {
-    const projects = [buildRuntimeProject(projectPayload, 'a.json'), buildRuntimeProject(secondProjectPayload, 'b.json')]
+    const projects = [
+      buildRuntimeProject(projectPayload, 'a.json'),
+      buildRuntimeProject(secondProjectPayload, 'b.json'),
+    ]
     const app = createApp(projects, { quiet: true })
     server = app.listen(0)
     await new Promise(resolve => server.once('listening', resolve))
@@ -112,16 +115,20 @@ describe('serve (offline mock server)', () => {
   })
 
   it('does not leak faker mutations between requests', async () => {
-    const first = await (await fetch(`${base}/aaaa-1111/users`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: 'A' }),
-    })).json()
-    const second = await (await fetch(`${base}/aaaa-1111/users`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: 'B' }),
-    })).json()
+    const first = await (
+      await fetch(`${base}/aaaa-1111/users`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'A' }),
+      })
+    ).json()
+    const second = await (
+      await fetch(`${base}/aaaa-1111/users`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'B' }),
+      })
+    ).json()
     assert.equal(second.name, 'B')
     assert.notEqual(second.email, first.email)
   })

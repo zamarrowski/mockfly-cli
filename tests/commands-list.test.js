@@ -102,9 +102,7 @@ describe('rm', () => {
 
     assert.throws(() => rm('nope', { dir }), ProcessExited)
 
-    assert.deepEqual(console_.err, [
-      "✖ No local project matches 'nope'. Run `mockfly list` to see what is pulled.",
-    ])
+    assert.deepEqual(console_.err, ["✖ No local project matches 'nope'. Run `mockfly list` to see what is pulled."])
     assert.deepEqual(exit.codes, [1])
     assert.deepEqual(fs.readdirSync(dir), ['aaaa-1111.json'])
   })

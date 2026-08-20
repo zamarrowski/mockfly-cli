@@ -133,6 +133,7 @@ export const createApp = (projects, { quiet = false } = {}) => {
     })
   })
 
+  // eslint-disable-next-line no-unused-vars
   app.use((req, res, next) => {
     const key = req.path.split('/')[1]
     const project = byKey.get(key)

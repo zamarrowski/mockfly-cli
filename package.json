@@ -27,7 +27,12 @@
   },
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "coverage": "node --test --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-lines=100 --test-coverage-branches=99 --test-coverage-functions=100 tests/*.test.js"
+    "coverage": "node --test --experimental-test-coverage --test-coverage-include='src/**' --test-coverage-lines=100 --test-coverage-branches=99 --test-coverage-functions=100 tests/*.test.js",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"src/**/*.js\" \"tests/**/*.js\" \"bin/*.js\" \"*.js\"",
+    "format:check": "prettier --check \"src/**/*.js\" \"tests/**/*.js\" \"bin/*.js\" \"*.js\"",
+    "postinstall": "test -d .githooks && git config core.hooksPath .githooks || true"
   },
   "keywords": [
     "mock",
@@ -43,5 +48,11 @@
     "vm2": "^3.9.19",
     "xmldom": "0.6.0",
     "xpath": "^0.0.34"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "eslint": "9.39.5",
+    "globals": "17.11.0",
+    "prettier": "2.0.5"
   }
 }

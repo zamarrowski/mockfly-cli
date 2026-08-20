@@ -16,10 +16,7 @@ const PROJECTS = [
 const exportFor = id => ({
   schemaVersion: 1,
   exportedAt: '2026-07-09T10:00:00.000Z',
-  project:
-    id === 'id-users'
-      ? { name: 'User API', slug: 'aaaa-1111' }
-      : { name: 'Payments Mock', slug: 'bbbb-2222' },
+  project: id === 'id-users' ? { name: 'User API', slug: 'aaaa-1111' } : { name: 'Payments Mock', slug: 'bbbb-2222' },
   environment: id === 'id-users' ? { BASE_URL: 'https://prod.example.com' } : {},
   endpoints: id === 'id-users' ? [{ path: '/users', method: 'GET', responses: [] }] : [],
 })

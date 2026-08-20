@@ -1,0 +1,22 @@
+#!/bin/sh
+# What CI checks, but before the commit instead of after.
+# Skip it for a specific commit with `git commit --no-verify`.
+#
+# This reads the working tree, not the index: a partial `git add` is still
+# checked against what is on disk. Same two steps as mockfly-backend's hook, so
+# the two repos behave the same way. Tests are not run here — they live in CI,
+# and the whole suite is about a second if you want it by hand: `yarn test`.
+
+set -e
+
+cd "$(git rev-parse --show-toplevel)"
+
+step() {
+  printf '\n\033[1m%s\033[0m\n' "$1"
+}
+
+step 'lint'
+yarn lint
+
+step 'format'
+yarn format:check

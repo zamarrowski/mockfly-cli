@@ -119,7 +119,10 @@ describe('buildRuntimeProject', () => {
 
   it('treats a missing position as 0', () => {
     const raw = payload()
-    raw.endpoints = [{ path: '/positioned', position: 1, responses: [] }, { path: '/unpositioned', responses: [] }]
+    raw.endpoints = [
+      { path: '/positioned', position: 1, responses: [] },
+      { path: '/unpositioned', responses: [] },
+    ]
     const project = buildRuntimeProject(raw, 'f.json')
 
     assert.deepEqual(
