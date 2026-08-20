@@ -1,14 +1,23 @@
-// Mirrors mockfly-backend: the pure (no DB, no network) parts of src/mocks/domain.js
-// and the content-type helpers of src/endpoints/domain.js. Function bodies are kept
-// verbatim so local responses match production. Adaptations for offline use:
+// Mirrors mockfly-backend: the pure (no DB, no network) parts of src/mocks/domain.js,
+// the content-type helpers of src/endpoints/domain.js and the two rule primitives of
+// src/responses/domain.js the engine needs. Function bodies are kept verbatim so local
+// responses match production. Adaptations for offline use:
 //   - no Mongo: `getResponse` returns the matched response object directly instead of
 //     an ObjectId (`defaultResponse` is resolved to an object by the workspace loader).
 //   - no caches, request counters, proxy or DB logging.
 import { faker } from '@faker-js/faker'
 import { DOMParser } from 'xmldom'
 import xpath from 'xpath'
-import { allowedRuleComparators, allowedRuleSources, ALLOWED_XML_CONTENT_TYPE_HEADER_VALES } from './constants.js'
-import { evalCode } from './vm.js'
+import { JSONPath } from 'jsonpath-plus'
+import {
+  allowedRuleComparators,
+  allowedRuleSources,
+  ALLOWED_XML_CONTENT_TYPE_HEADER_VALES,
+  JSON_PATH_EVAL_MODE,
+  MAX_RULE_GROUP_DEPTH,
+  ruleGroupOperators,
+} from './constants.js'
+import { evalCode, matchesRegex } from './vm.js'
 
 export const queryParamsToString = query => {
   if (query) {
@@ -174,87 +183,174 @@ export const getNestedValue = (obj, path) => {
   return currentObj
 }
 
-const evaluateRule = ({ rule, requestBody, query, headers, urlParams, endpointHeaders }) => {
-  let propertyValue = null
+const isValueInCommaSeparatedList = (value, list) => {
+  if (typeof list !== 'string') return false
 
-  if (rule.source === allowedRuleSources.body) {
-    propertyValue = getNestedValue(requestBody, rule.property)
-  }
+  const items = list.split(',').map(item => item.trim())
 
-  if (rule.source === allowedRuleSources.queryString) {
-    propertyValue = query[rule.property]
-  }
+  return Boolean(items.find(item => item == value))
+}
 
-  if (rule.source === allowedRuleSources.header) {
-    propertyValue = headers[rule.property.toLowerCase()] || headers[rule.property]
-  }
+const asString = value => (value === undefined || value === null ? '' : String(value))
 
-  if (rule.source === allowedRuleSources.urlParam) {
-    propertyValue = urlParams[rule.property]
-  }
+const isEmptyValue = value => {
+  if (value === undefined || value === null) return true
 
-  if (
-    rule.comparator === allowedRuleComparators.equal &&
-    propertyValue == rule.value &&
-    rule.source !== allowedRuleSources.xmlTag
-  ) {
-    return true
-  }
+  if (typeof value === 'string') return value.trim() === ''
 
-  if (
-    rule.comparator === allowedRuleComparators.distinct &&
-    propertyValue != rule.value &&
-    rule.source !== allowedRuleSources.xmlTag
-  ) {
-    return true
-  }
+  if (Array.isArray(value)) return value.length === 0
 
-  if (
-    rule.comparator === allowedRuleComparators.includes &&
-    rule.value &&
-    typeof rule.value === 'string' &&
-    rule.value
-      .split(',')
-      .map(item => item.trim())
-      .find(item => item == propertyValue) &&
-    rule.source !== allowedRuleSources.xmlTag
-  ) {
-    return true
-  }
-
-  if (isContentTypeXML(endpointHeaders) && rule.source === allowedRuleSources.xmlTag) {
-    const tagName = rule.value
-    const xml = new DOMParser().parseFromString(requestBody)
-
-    if (xml) {
-      const existsTag = xml.getElementsByTagName(tagName).length > 0
-
-      if (rule.comparator === allowedRuleComparators.equal && existsTag) {
-        return true
-      }
-
-      if (rule.comparator === allowedRuleComparators.distinct && !existsTag) {
-        return true
-      }
-    }
-  }
-
-  if (
-    isContentTypeXML(endpointHeaders) &&
-    rule.source === allowedRuleSources.xPath &&
-    requestBody &&
-    typeof requestBody === 'string'
-  ) {
-    const xml = new DOMParser().parseFromString(requestBody)
-
-    if (xml) {
-      const found = xpath.select(rule.value, xml)
-
-      return found && found.length > 0
-    }
-  }
+  if (typeof value === 'object') return Object.keys(value).length === 0
 
   return false
+}
+
+// From the backend's src/responses/domain.js: the CLI serves rules the backend has
+// already validated, so only these two primitives of that module are ported.
+export const resolveJsonPathValues = (json, path) => {
+  if (typeof json !== 'object' || json === null) return []
+
+  try {
+    return JSONPath({ path, json, wrap: true, eval: JSON_PATH_EVAL_MODE })
+  } catch {
+    return []
+  }
+}
+
+export const toRuleNumber = value => {
+  if (value === undefined || value === null || value === '') return NaN
+
+  return Number(value)
+}
+
+const buildNumericComparator = compare => (value, expected) => {
+  const number = toRuleNumber(value)
+  const expectedNumber = toRuleNumber(expected)
+
+  if (!Number.isFinite(number) || !Number.isFinite(expectedNumber)) return false
+
+  return compare(number, expectedNumber)
+}
+
+export const RULE_COMPARATORS = {
+  [allowedRuleComparators.equal]: (value, expected) => value == expected,
+  [allowedRuleComparators.distinct]: (value, expected) => value != expected,
+  [allowedRuleComparators.includes]: (value, expected) => isValueInCommaSeparatedList(value, expected),
+  [allowedRuleComparators.contains]: (value, expected) => asString(value).includes(asString(expected)),
+  [allowedRuleComparators.notContains]: (value, expected) => !asString(value).includes(asString(expected)),
+  [allowedRuleComparators.startsWith]: (value, expected) => asString(value).startsWith(asString(expected)),
+  [allowedRuleComparators.endsWith]: (value, expected) => asString(value).endsWith(asString(expected)),
+  [allowedRuleComparators.regex]: (value, expected) => matchesRegex(asString(expected), asString(value)),
+  [allowedRuleComparators.greaterThan]: buildNumericComparator((number, expected) => number > expected),
+  [allowedRuleComparators.greaterOrEqual]: buildNumericComparator((number, expected) => number >= expected),
+  [allowedRuleComparators.lessThan]: buildNumericComparator((number, expected) => number < expected),
+  [allowedRuleComparators.lessOrEqual]: buildNumericComparator((number, expected) => number <= expected),
+  [allowedRuleComparators.exists]: value => value !== undefined && value !== null,
+  [allowedRuleComparators.notExists]: value => value === undefined || value === null,
+  [allowedRuleComparators.isEmpty]: value => isEmptyValue(value),
+  [allowedRuleComparators.isNotEmpty]: value => !isEmptyValue(value),
+}
+
+export const getRuleSourceValue = ({ rule, requestBody, query, headers, urlParams }) => {
+  if (rule.source === allowedRuleSources.body) return getNestedValue(requestBody, rule.property)
+
+  if (rule.source === allowedRuleSources.queryString) return query[rule.property]
+
+  if (rule.source === allowedRuleSources.header) return headers[rule.property.toLowerCase()] || headers[rule.property]
+
+  if (rule.source === allowedRuleSources.urlParam) return urlParams[rule.property]
+
+  return null
+}
+
+const evaluateJsonPathRule = (rule, requestBody) => {
+  const compare = RULE_COMPARATORS[rule.comparator]
+
+  if (!compare) return false
+
+  const values = resolveJsonPathValues(requestBody, rule.property)
+
+  if (!values.length) return compare(undefined, rule.value)
+
+  return values.some(value => compare(value, rule.value))
+}
+
+const evaluateXmlTagRule = (rule, requestBody, endpointHeaders) => {
+  if (!isContentTypeXML(endpointHeaders)) return false
+
+  const xml = new DOMParser().parseFromString(requestBody)
+
+  if (!xml) return false
+
+  const existsTag = xml.getElementsByTagName(rule.value).length > 0
+
+  if (rule.comparator === allowedRuleComparators.equal) return existsTag
+
+  if (rule.comparator === allowedRuleComparators.distinct) return !existsTag
+
+  return false
+}
+
+const isXPathRuleOnXmlBody = (rule, requestBody, endpointHeaders) => {
+  return (
+    rule.source === allowedRuleSources.xPath &&
+    isContentTypeXML(endpointHeaders) &&
+    typeof requestBody === 'string' &&
+    requestBody.length > 0
+  )
+}
+
+const evaluateXPathRule = (rule, requestBody) => {
+  const xml = new DOMParser().parseFromString(requestBody)
+
+  if (!xml) return false
+
+  const found = xpath.select(rule.value, xml)
+
+  return Boolean(found && found.length > 0)
+}
+
+export const evaluateRule = ({ rule, requestBody, query, headers, urlParams, endpointHeaders }) => {
+  if (rule.source === allowedRuleSources.xmlTag) return evaluateXmlTagRule(rule, requestBody, endpointHeaders)
+
+  if (rule.source === allowedRuleSources.jsonPath) return evaluateJsonPathRule(rule, requestBody)
+
+  const propertyValue = getRuleSourceValue({ rule, requestBody, query, headers, urlParams })
+  const compare = RULE_COMPARATORS[rule.comparator]
+
+  if (compare && compare(propertyValue, rule.value)) return true
+
+  if (isXPathRuleOnXmlBody(rule, requestBody, endpointHeaders)) return evaluateXPathRule(rule, requestBody)
+
+  return false
+}
+
+export const isRuleGroup = node => Array.isArray(node?.conditions)
+
+const evaluateRuleGroupCondition = (condition, context, depth) => {
+  if (isRuleGroup(condition)) return evaluateRuleGroup(condition, context, depth)
+
+  return evaluateRule({ rule: condition, ...context })
+}
+
+const evaluateRuleGroup = (group, context, depth) => {
+  if (depth > MAX_RULE_GROUP_DEPTH || !group.conditions.length) return false
+
+  if (group.operator === ruleGroupOperators.or) {
+    return group.conditions.some(condition => evaluateRuleGroupCondition(condition, context, depth + 1))
+  }
+
+  return group.conditions.every(condition => evaluateRuleGroupCondition(condition, context, depth + 1))
+}
+
+export const matchesRule = (rule, context) => {
+  if (isRuleGroup(rule)) return evaluateRuleGroup(rule, context, 1)
+
+  const mainRuleMatch = evaluateRule({ rule, ...context })
+
+  if (!rule?.andConditions?.length) return mainRuleMatch
+
+  return mainRuleMatch && rule.andConditions.every(condition => evaluateRule({ rule: condition, ...context }))
 }
 
 export const getResponseThatMatchWithARule = (
@@ -266,21 +362,11 @@ export const getResponseThatMatchWithARule = (
   endpointHeaders = []
 ) => {
   let matchedResponse = null
+  const context = { requestBody, query, headers, urlParams, endpointHeaders }
 
   responses?.forEach(response => {
     response?.rules?.forEach(rule => {
-      const mainRuleMatch = evaluateRule({ rule, requestBody, query, headers, urlParams, endpointHeaders })
-
-      let andConditionsMatch = true
-      if (rule?.andConditions?.length > 0) {
-        andConditionsMatch = rule.andConditions.every(cond =>
-          evaluateRule({ rule: cond, requestBody, query, headers, urlParams, endpointHeaders })
-        )
-      }
-
-      if (mainRuleMatch && andConditionsMatch) {
-        matchedResponse = response
-      }
+      if (matchesRule(rule, context)) matchedResponse = response
     })
   })
 

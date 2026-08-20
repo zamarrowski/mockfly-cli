@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import {
   FILTERS,
+  RULE_COMPARATORS,
   applyFilters,
+  evaluateRule,
   getFakerFn,
   getNestedValue,
   getRandomResponse,
@@ -14,6 +16,7 @@ import {
   isContentTypePDF,
   isContentTypeXML,
   matchPath,
+  matchesRule,
   parseFakerBody,
   queryParamsToString,
   replaceBodyWithEnvVars,
@@ -89,6 +92,309 @@ describe('rules', () => {
     }
     assert.equal(getResponseThatMatchWithARule({}, { a: '1', b: '2' }, {}, {}, [response])?.name, 'both')
     assert.equal(getResponseThatMatchWithARule({}, { a: '1', b: '3' }, {}, {}, [response]), null)
+  })
+
+  it('returns the last matching response when several match', () => {
+    const rule = { source: 'body', property: 'user.role', comparator: 'equal', value: 'admin' }
+    const responses = [
+      { name: 'first', rules: [rule] },
+      { name: 'second', rules: [rule] },
+    ]
+
+    assert.equal(getResponseThatMatchWithARule({ user: { role: 'admin' } }, {}, {}, {}, responses)?.name, 'second')
+  })
+
+  it('returns null when no rule matches', () => {
+    assert.equal(getResponseThatMatchWithARule({}, {}, {}, {}, [adminResponse, queryResponse]), null)
+  })
+
+  it('serves the response of an or group when any of its conditions matches', () => {
+    const response = {
+      name: 'spain',
+      rules: [
+        {
+          operator: 'or',
+          conditions: [
+            { source: 'header', property: 'x-country', comparator: 'equal', value: 'ES' },
+            { source: 'queryString', property: 'country', comparator: 'equal', value: 'ES' },
+          ],
+        },
+      ],
+    }
+
+    assert.equal(getResponseThatMatchWithARule(null, { country: 'ES' }, {}, {}, [response])?.name, 'spain')
+    assert.equal(getResponseThatMatchWithARule(null, {}, { 'x-country': 'ES' }, {}, [response])?.name, 'spain')
+    assert.equal(getResponseThatMatchWithARule(null, { country: 'FR' }, {}, {}, [response]), null)
+  })
+})
+
+describe('evaluateRule', () => {
+  const evaluate = (rule, context = {}) =>
+    evaluateRule({ rule, requestBody: null, query: {}, headers: {}, urlParams: {}, ...context })
+
+  it('compares a nested body property with equal', () => {
+    const rule = { source: 'body', property: 'user.name', comparator: 'equal', value: 'sergio' }
+
+    assert.equal(evaluate(rule, { requestBody: { user: { name: 'sergio' } } }), true)
+    assert.equal(evaluate(rule, { requestBody: { user: { name: 'angela' } } }), false)
+  })
+
+  it('compares loosely, so a numeric body value matches a string rule value', () => {
+    const rule = { source: 'body', property: 'total', comparator: 'equal', value: '100' }
+
+    assert.equal(evaluate(rule, { requestBody: { total: 100 } }), true)
+  })
+
+  it('matches distinct when the body property is missing', () => {
+    const rule = { source: 'body', property: 'missing', comparator: 'distinct', value: 'sergio' }
+
+    assert.equal(evaluate(rule, { requestBody: {} }), true)
+  })
+
+  it('treats includes as membership in a comma separated list', () => {
+    const rule = { source: 'queryString', property: 'env', comparator: 'includes', value: 'pro, pre , dev' }
+
+    assert.equal(evaluate(rule, { query: { env: 'pre' } }), true)
+    assert.equal(evaluate(rule, { query: { env: 'p' } }), false)
+  })
+
+  it('does not match includes when the rule value is not a list', () => {
+    const rule = { source: 'queryString', property: 'env', comparator: 'includes', value: ['pro'] }
+
+    assert.equal(evaluate(rule, { query: { env: 'pro' } }), false)
+  })
+
+  it('reads a header ignoring the case of the property', () => {
+    const rule = { source: 'header', property: 'X-Country', comparator: 'equal', value: 'ES' }
+
+    assert.equal(evaluate(rule, { headers: { 'x-country': 'ES' } }), true)
+    assert.equal(evaluate(rule, { headers: { 'X-Country': 'ES' } }), true)
+  })
+
+  it('reads a url param', () => {
+    const rule = { source: 'urlParam', property: 'id', comparator: 'equal', value: '3' }
+
+    assert.equal(evaluate(rule, { urlParams: { id: '3' } }), true)
+  })
+
+  it('returns false for an unknown comparator', () => {
+    const rule = { source: 'body', property: 'name', comparator: 'whatever', value: 'sergio' }
+
+    assert.equal(evaluate(rule, { requestBody: { name: 'sergio' } }), false)
+  })
+
+  it('returns false for an unknown source', () => {
+    const rule = { source: 'cookie', property: 'session', comparator: 'equal', value: 'abc' }
+
+    assert.equal(evaluate(rule), false)
+  })
+})
+
+describe('jsonPath rules', () => {
+  const requestBody = {
+    items: [
+      { sku: 'A-1', price: 5 },
+      { sku: 'B-2', price: 50 },
+    ],
+  }
+  const evaluate = (rule, body = requestBody) =>
+    evaluateRule({ rule, requestBody: body, query: {}, headers: {}, urlParams: {} })
+
+  it('indexes into an array', () => {
+    const rule = { source: 'jsonPath', property: '$.items[0].sku', comparator: 'equal', value: 'A-1' }
+
+    assert.equal(evaluate(rule), true)
+    assert.equal(evaluate({ ...rule, value: 'B-2' }), false)
+  })
+
+  it('matches when any of the values a wildcard selects matches', () => {
+    const rule = { source: 'jsonPath', property: '$.items[*].sku', comparator: 'equal', value: 'B-2' }
+
+    assert.equal(evaluate(rule), true)
+    assert.equal(evaluate({ ...rule, value: 'C-3' }), false)
+  })
+
+  it('supports a filter expression', () => {
+    const rule = { source: 'jsonPath', property: '$.items[?(@.price>10)].sku', comparator: 'equal', value: 'B-2' }
+
+    assert.equal(evaluate(rule), true)
+  })
+
+  it('evaluates an expression that selects nothing against an undefined value', () => {
+    const property = '$.items[5].sku'
+
+    assert.equal(evaluate({ source: 'jsonPath', property, comparator: 'exists' }), false)
+    assert.equal(evaluate({ source: 'jsonPath', property, comparator: 'notExists' }), true)
+  })
+
+  it('does not match when the request body is not an object', () => {
+    const rule = { source: 'jsonPath', property: '$.items[0].sku', comparator: 'equal', value: 'A-1' }
+
+    assert.equal(evaluate(rule, '<root/>'), false)
+    assert.equal(evaluate(rule, null), false)
+  })
+
+  it('does not match when the expression does not parse', () => {
+    const rule = { source: 'jsonPath', property: '$.items[?(@.price>)]', comparator: 'exists' }
+
+    assert.equal(evaluate(rule), false)
+  })
+
+  it('does not match with an unknown comparator', () => {
+    const rule = { source: 'jsonPath', property: '$.items[0].sku', comparator: 'whatever', value: 'A-1' }
+
+    assert.equal(evaluate(rule), false)
+  })
+})
+
+describe('rule comparators', () => {
+  const compare = (comparator, value, expected) => RULE_COMPARATORS[comparator](value, expected)
+
+  it('compares substrings with contains and notContains', () => {
+    assert.equal(compare('contains', 'sergio@mockfly.dev', 'mockfly'), true)
+    assert.equal(compare('contains', 'sergio@mockfly.dev', 'other'), false)
+    assert.equal(compare('notContains', 'sergio@mockfly.dev', 'other'), true)
+    assert.equal(compare('notContains', 'sergio@mockfly.dev', 'mockfly'), false)
+  })
+
+  it('treats a missing value as an empty string when comparing substrings', () => {
+    assert.equal(compare('contains', undefined, 'mockfly'), false)
+    assert.equal(compare('notContains', null, 'mockfly'), true)
+  })
+
+  it('compares prefixes and suffixes', () => {
+    assert.equal(compare('startsWith', 'mf_1234', 'mf_'), true)
+    assert.equal(compare('startsWith', 'sk_1234', 'mf_'), false)
+    assert.equal(compare('endsWith', 'sergio@empresa.com', '@empresa.com'), true)
+    assert.equal(compare('endsWith', 'sergio@otra.com', '@empresa.com'), false)
+  })
+
+  it('matches a regular expression', () => {
+    assert.equal(compare('regex', 'user-42', '^user-\\d+$'), true)
+    assert.equal(compare('regex', 'user-abc', '^user-\\d+$'), false)
+  })
+
+  it('does not match a regular expression that does not compile', () => {
+    assert.equal(compare('regex', 'user-42', '^(user'), false)
+  })
+
+  // The reason the regex runs inside vm2 with a timeout: without it this call would
+  // block the server for years instead of returning false in a few milliseconds.
+  it('gives up instead of hanging on a catastrophic regular expression', () => {
+    const start = Date.now()
+
+    assert.equal(compare('regex', `${'a'.repeat(40)}b`, '^(a+)+$'), false)
+    assert.ok(Date.now() - start < 1000)
+  })
+
+  it('compares numbers, coercing strings', () => {
+    assert.equal(compare('greaterThan', '150', 100), true)
+    assert.equal(compare('greaterThan', 100, 100), false)
+    assert.equal(compare('greaterOrEqual', 100, 100), true)
+    assert.equal(compare('lessThan', 50, '100'), true)
+    assert.equal(compare('lessThan', 100, 50), false)
+    assert.equal(compare('lessOrEqual', 100, 100), true)
+  })
+
+  it('does not match a numeric comparator when either side is not a number', () => {
+    assert.equal(compare('greaterThan', 'ten', 5), false)
+    assert.equal(compare('greaterThan', undefined, 5), false)
+    assert.equal(compare('greaterThan', null, 5), false)
+    assert.equal(compare('greaterThan', '', 5), false)
+    assert.equal(compare('lessThan', 5, 'ten'), false)
+  })
+
+  it('compares against zero', () => {
+    assert.equal(compare('greaterThan', 1, 0), true)
+    assert.equal(compare('lessOrEqual', 0, 0), true)
+  })
+
+  it('checks presence with exists and notExists', () => {
+    assert.equal(compare('exists', 'anything'), true)
+    assert.equal(compare('exists', ''), true)
+    assert.equal(compare('exists', 0), true)
+    assert.equal(compare('exists', undefined), false)
+    assert.equal(compare('exists', null), false)
+    assert.equal(compare('notExists', undefined), true)
+    assert.equal(compare('notExists', 'anything'), false)
+  })
+
+  it('checks emptiness with isEmpty and isNotEmpty', () => {
+    assert.equal(compare('isEmpty', ''), true)
+    assert.equal(compare('isEmpty', '   '), true)
+    assert.equal(compare('isEmpty', []), true)
+    assert.equal(compare('isEmpty', {}), true)
+    assert.equal(compare('isEmpty', undefined), true)
+    assert.equal(compare('isEmpty', 'sergio'), false)
+    assert.equal(compare('isEmpty', 0), false)
+    assert.equal(compare('isNotEmpty', 'sergio'), true)
+    assert.equal(compare('isNotEmpty', [1]), true)
+    assert.equal(compare('isNotEmpty', ''), false)
+  })
+})
+
+describe('rule groups', () => {
+  const context = { requestBody: { total: 150 }, query: { env: 'pro' }, headers: {}, urlParams: {} }
+  const totalOver100 = { source: 'body', property: 'total', comparator: 'greaterThan', value: 100 }
+  const envIsPro = { source: 'queryString', property: 'env', comparator: 'equal', value: 'pro' }
+  const envIsDev = { source: 'queryString', property: 'env', comparator: 'equal', value: 'dev' }
+
+  it('evaluates a flat rule with no conditions', () => {
+    assert.equal(matchesRule(totalOver100, context), true)
+    assert.equal(matchesRule(envIsDev, context), false)
+  })
+
+  it('keeps evaluating the old andConditions format', () => {
+    assert.equal(matchesRule({ ...totalOver100, andConditions: [envIsPro] }, context), true)
+    assert.equal(matchesRule({ ...totalOver100, andConditions: [envIsDev] }, context), false)
+    assert.equal(matchesRule({ ...envIsDev, andConditions: [envIsPro] }, context), false)
+  })
+
+  it('matches an or group when any condition matches', () => {
+    assert.equal(matchesRule({ operator: 'or', conditions: [envIsDev, totalOver100] }, context), true)
+    assert.equal(
+      matchesRule({ operator: 'or', conditions: [envIsDev, { ...totalOver100, value: 500 }] }, context),
+      false
+    )
+  })
+
+  it('matches an and group only when every condition matches', () => {
+    assert.equal(matchesRule({ operator: 'and', conditions: [envIsPro, totalOver100] }, context), true)
+    assert.equal(matchesRule({ operator: 'and', conditions: [envIsDev, totalOver100] }, context), false)
+  })
+
+  it('evaluates a group nested inside another group', () => {
+    const group = {
+      operator: 'and',
+      conditions: [totalOver100, { operator: 'or', conditions: [envIsDev, envIsPro] }],
+    }
+
+    assert.equal(matchesRule(group, context), true)
+    assert.equal(matchesRule({ ...group, conditions: [envIsDev, group.conditions[1]] }, context), false)
+  })
+
+  it('does not match a group with no conditions', () => {
+    assert.equal(matchesRule({ operator: 'and', conditions: [] }, context), false)
+    assert.equal(matchesRule({ operator: 'or', conditions: [] }, context), false)
+  })
+
+  it('treats an unknown operator as and', () => {
+    assert.equal(matchesRule({ operator: 'nope', conditions: [envIsPro, totalOver100] }, context), true)
+    assert.equal(matchesRule({ operator: 'nope', conditions: [envIsDev, totalOver100] }, context), false)
+  })
+
+  it('does not match a group nested deeper than the allowed depth', () => {
+    const tooDeep = {
+      operator: 'and',
+      conditions: [
+        {
+          operator: 'and',
+          conditions: [{ operator: 'and', conditions: [{ operator: 'and', conditions: [envIsPro] }] }],
+        },
+      ],
+    }
+
+    assert.equal(matchesRule(tooDeep, context), false)
   })
 })
 
@@ -429,9 +735,16 @@ describe('rule sources and comparators', () => {
   })
 
   it('ignores an unknown comparator', () => {
+    const rule = { source: 'queryString', property: 't', comparator: 'whatever', value: 'a' }
+
+    assert.equal(match(rule, { query: { t: 'a' } }), null)
+  })
+
+  it('matches the comparators the backend added on top of equal, distinct and includes', () => {
     const rule = { source: 'queryString', property: 't', comparator: 'startsWith', value: 'a' }
 
-    assert.equal(match(rule, { query: { t: 'ab' } }), null)
+    assert.equal(match(rule, { query: { t: 'ab' } })?.name, 'matched')
+    assert.equal(match(rule, { query: { t: 'ba' } }), null)
   })
 
   it('tolerates responses without rules', () => {
@@ -492,6 +805,33 @@ describe('xml rules', () => {
 
     assert.equal(match(rule, { Item: 1 }), null)
     assert.equal(match(rule, undefined), null)
+  })
+
+  it('ignores an xPath rule when the request body is an empty string', () => {
+    const rule = { source: 'xPath', comparator: 'equal', value: '//Item' }
+
+    assert.equal(match(rule, ''), null)
+  })
+
+  // Pinned, not endorsed: `null != '//Item'` is true before the expression is ever
+  // evaluated, so this rule matches every request. The backend does the same and
+  // parity beats fixing it here.
+  it('matches every request for an xPath rule with distinct, as the backend does', () => {
+    const rule = { source: 'xPath', comparator: 'distinct', value: '//Item' }
+
+    assert.equal(match(rule, '<root/>')?.name, 'matched')
+    assert.equal(match(rule, '<root><Item>1</Item></root>')?.name, 'matched')
+  })
+
+  it('ignores an xmlTag rule with a comparator other than equal or distinct', () => {
+    const rule = { source: 'xmlTag', comparator: 'includes', value: 'Item' }
+
+    assert.equal(match(rule, '<root><Item>1</Item></root>'), null)
+  })
+
+  it('ignores an xml rule when the body does not parse as xml', () => {
+    assert.equal(match({ source: 'xmlTag', comparator: 'equal', value: 'Item' }, ''), null)
+    assert.equal(match({ source: 'xmlTag', comparator: 'distinct', value: 'Item' }, ''), null)
   })
 })
 
