@@ -70,3 +70,36 @@ export const captureConsole = () => {
     },
   }
 }
+
+// `src/api.js` goes through global fetch, so a stub here is the whole HTTP layer.
+export const stubFetch = handler => {
+  const original = globalThis.fetch
+  const calls = []
+
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options })
+    return handler(url, options)
+  }
+
+  return {
+    calls,
+    restore: () => {
+      globalThis.fetch = original
+    },
+  }
+}
+
+// Minimal stand-in for a `fetch` Response, enough for src/api.js.
+export const jsonResponse = (body, { status = 200 } = {}) => ({
+  status,
+  ok: status >= 200 && status < 300,
+  json: async () => body,
+})
+
+export const brokenBodyResponse = ({ status = 500 } = {}) => ({
+  status,
+  ok: false,
+  json: async () => {
+    throw new SyntaxError('Unexpected token < in JSON at position 0')
+  },
+})
