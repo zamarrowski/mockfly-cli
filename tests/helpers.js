@@ -1,8 +1,10 @@
 // Shared plumbing for the CLI tests. No dependencies on purpose: node:test,
 // node:assert and the standard library are enough for everything here.
 import fs from 'fs'
+import { createServer } from 'net'
 import os from 'os'
 import path from 'path'
+import { PassThrough } from 'stream'
 
 // Every test that touches the filesystem gets its own throwaway directory, so
 // nothing ever reaches the real ~/.mockfly.
@@ -87,6 +89,42 @@ export const stubFetch = handler => {
       globalThis.fetch = original
     },
   }
+}
+
+// `login` reads the key from process.stdin when --key is missing.
+export const stubStdin = input => {
+  const original = Object.getOwnPropertyDescriptor(process, 'stdin')
+  const stream = new PassThrough()
+  stream.end(input)
+
+  Object.defineProperty(process, 'stdin', { value: stream, configurable: true, writable: true })
+
+  return {
+    restore: () => Object.defineProperty(process, 'stdin', original),
+  }
+}
+
+// readline writes its prompt straight to stdout, which would land in the middle
+// of the reporter output.
+export const muteStdout = () => {
+  const original = process.stdout.write
+  process.stdout.write = () => true
+
+  return {
+    restore: () => {
+      process.stdout.write = original
+    },
+  }
+}
+
+// `serve()` treats port 0 as falsy and falls back to 4000, so tests need a real
+// free port instead.
+export const freePort = async () => {
+  const probe = createServer()
+  await new Promise(resolve => probe.listen(0, resolve))
+  const { port } = probe.address()
+  await new Promise(resolve => probe.close(resolve))
+  return port
 }
 
 // Minimal stand-in for a `fetch` Response, enough for src/api.js.

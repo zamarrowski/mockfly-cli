@@ -30,4 +30,7 @@ export const serve = options => {
     if (error.code === 'EADDRINUSE') fail(`Port ${port} is already in use. Try \`mockfly serve --port ${port + 1}\`.`)
     fail(error.message)
   })
+
+  // Commander ignores the return value; returning the listener lets a test close it.
+  return server
 }
