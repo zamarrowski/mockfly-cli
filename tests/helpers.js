@@ -8,6 +8,15 @@ import path from 'path'
 // nothing ever reaches the real ~/.mockfly.
 export const tempDir = (prefix = 'mockfly-test-') => fs.mkdtempSync(path.join(os.tmpdir(), prefix))
 
+// `src/config.js` resolves ~/.mockfly at import time, so the home directory has
+// to be redirected before the module (or anything importing it) is loaded.
+export const useTempHome = () => {
+  const home = tempDir('mockfly-home-')
+  process.env.HOME = home
+  process.env.USERPROFILE = home
+  return home
+}
+
 export class ProcessExited extends Error {
   constructor(code) {
     super(`process.exit(${code})`)
