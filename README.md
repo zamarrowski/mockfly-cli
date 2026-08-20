@@ -71,9 +71,20 @@ Snapshots live in `~/.mockfly/projects` by default, out of your working director
 ## Development
 
 ```bash
-yarn install
+yarn install     # also wires .githooks as core.hooksPath
 yarn test        # node --test: engine unit tests + e2e against a real local server
+yarn coverage    # same tests with coverage thresholds over src/** (needs Node 22+)
+yarn lint        # eslint
+yarn format      # prettier --write (format:check to only check)
 ```
+
+`.githooks/pre-commit` runs `lint` and `format:check` before every commit — the
+same two checks CI runs, so a commit that passed the hook cannot fail on them.
+Skip it for one commit with `git commit --no-verify`.
+
+CI runs `yarn test` on Node 18, 20, 22 and 24, and `yarn coverage` on the newest of
+them. `bin/mockfly.js` is out of the coverage denominator on purpose — it only runs
+as a subprocess, where V8 collects nothing — but it still gets a smoke test.
 
 ## Contributing
 

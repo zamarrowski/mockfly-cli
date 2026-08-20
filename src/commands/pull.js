@@ -25,7 +25,9 @@ export const pull = async (slugs, options) => {
     for (const wanted of slugs) {
       const match = available.find(p => p.slug === wanted || aliasFor(p.name) === wanted)
       if (!match) {
-        console.log(yellow(`⚠ No project matches '${wanted}' — available: ${available.map(p => aliasFor(p.name)).join(', ')}`))
+        console.log(
+          yellow(`⚠ No project matches '${wanted}' — available: ${available.map(p => aliasFor(p.name)).join(', ')}`)
+        )
         continue
       }
       targets.push(match)
@@ -43,7 +45,10 @@ export const pull = async (slugs, options) => {
       const file = saveProject(dir, payload)
       const endpoints = payload.endpoints?.length || 0
       if (Object.keys(payload.environment || {}).length) pulledEnvVars = true
-      console.log(green(`✔ ${target.name}`) + dim(` — ${endpoints} endpoint${endpoints === 1 ? '' : 's'} → ${path.basename(file)}`))
+      console.log(
+        green(`✔ ${target.name}`) +
+          dim(` — ${endpoints} endpoint${endpoints === 1 ? '' : 's'} → ${path.basename(file)}`)
+      )
     } catch (error) {
       console.log(yellow(`⚠ ${target.name}: ${error.message}`))
     }

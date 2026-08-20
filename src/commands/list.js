@@ -12,7 +12,9 @@ export const list = options => {
 
   for (const project of projects) {
     console.log(
-      `${bold(project.name)} ${dim(`(${project.alias})`)} — ${project.endpoints.length} endpoints, pulled ${timeAgo(project.pulledAt)}`
+      `${bold(project.name)} ${dim(`(${project.alias})`)} — ${project.endpoints.length} endpoints, pulled ${timeAgo(
+        project.pulledAt
+      )}`
     )
     console.log(dim(`  slug: ${project.slug}`))
   }

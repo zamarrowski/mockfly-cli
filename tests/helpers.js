@@ -1,0 +1,143 @@
+// Shared plumbing for the CLI tests. No dependencies on purpose: node:test,
+// node:assert and the standard library are enough for everything here.
+import fs from 'fs'
+import { createServer } from 'net'
+import os from 'os'
+import path from 'path'
+import { PassThrough } from 'stream'
+
+// Every test that touches the filesystem gets its own throwaway directory, so
+// nothing ever reaches the real ~/.mockfly.
+export const tempDir = (prefix = 'mockfly-test-') => fs.mkdtempSync(path.join(os.tmpdir(), prefix))
+
+// `src/config.js` resolves ~/.mockfly at import time, so the home directory has
+// to be redirected before the module (or anything importing it) is loaded.
+export const useTempHome = () => {
+  const home = tempDir('mockfly-home-')
+  process.env.HOME = home
+  process.env.USERPROFILE = home
+  return home
+}
+
+export class ProcessExited extends Error {
+  constructor(code) {
+    super(`process.exit(${code})`)
+    this.name = 'ProcessExited'
+    this.code = code
+  }
+}
+
+// `fail()` calls process.exit(1), which would take the test runner down with it.
+// Throwing keeps the caller's control flow faithful to a real exit (nothing after
+// the fail() runs); pass { throwOnExit: false } for the few call sites that are
+// reached from an event handler, where a throw would escape as uncaught.
+export const stubExit = ({ throwOnExit = true } = {}) => {
+  const original = process.exit
+  const codes = []
+
+  process.exit = code => {
+    codes.push(code)
+    if (throwOnExit) throw new ProcessExited(code)
+  }
+
+  return {
+    codes,
+    restore: () => {
+      process.exit = original
+    },
+  }
+}
+
+export const captureConsole = () => {
+  const originalLog = console.log
+  const originalError = console.error
+  const out = []
+  const err = []
+
+  console.log = (...args) => out.push(args.map(String).join(' '))
+  console.error = (...args) => err.push(args.map(String).join(' '))
+
+  return {
+    out,
+    err,
+    get stdout() {
+      return out.join('\n')
+    },
+    get stderr() {
+      return err.join('\n')
+    },
+    restore: () => {
+      console.log = originalLog
+      console.error = originalError
+    },
+  }
+}
+
+// `src/api.js` goes through global fetch, so a stub here is the whole HTTP layer.
+export const stubFetch = handler => {
+  const original = globalThis.fetch
+  const calls = []
+
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url, options })
+    return handler(url, options)
+  }
+
+  return {
+    calls,
+    restore: () => {
+      globalThis.fetch = original
+    },
+  }
+}
+
+// `login` reads the key from process.stdin when --key is missing.
+export const stubStdin = input => {
+  const original = Object.getOwnPropertyDescriptor(process, 'stdin')
+  const stream = new PassThrough()
+  stream.end(input)
+
+  Object.defineProperty(process, 'stdin', { value: stream, configurable: true, writable: true })
+
+  return {
+    restore: () => Object.defineProperty(process, 'stdin', original),
+  }
+}
+
+// readline writes its prompt straight to stdout, which would land in the middle
+// of the reporter output.
+export const muteStdout = () => {
+  const original = process.stdout.write
+  process.stdout.write = () => true
+
+  return {
+    restore: () => {
+      process.stdout.write = original
+    },
+  }
+}
+
+// `serve()` treats port 0 as falsy and falls back to 4000, so tests need a real
+// free port instead.
+export const freePort = async () => {
+  const probe = createServer()
+  await new Promise(resolve => probe.listen(0, resolve))
+  const { port } = probe.address()
+  await new Promise(resolve => probe.close(resolve))
+  return port
+}
+
+// Minimal stand-in for a `fetch` Response, enough for src/api.js.
+export const jsonResponse = (body, { status = 200 } = {}) => ({
+  status,
+  ok: status >= 200 && status < 300,
+  json: async () => body,
+})
+
+export const brokenBodyResponse = ({ status = 500 } = {}) => ({
+  status,
+  ok: false,
+  json: async () => {
+    throw new SyntaxError('Unexpected token < in JSON at position 0')
+  },
+})
