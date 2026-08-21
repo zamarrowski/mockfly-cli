@@ -86,14 +86,18 @@ describe('clearConfig', () => {
 
 describe('resolveAuth', () => {
   it('falls back to no key and the default API base', () => {
-    assert.deepEqual(resolveAuth(), { apiKey: null, apiBase: DEFAULT_API_BASE })
+    assert.deepEqual(resolveAuth(), { apiKey: null, apiKeySource: null, apiBase: DEFAULT_API_BASE })
     assert.equal(DEFAULT_API_BASE, 'https://api.mockfly.dev')
   })
 
   it('uses the saved config when there is no flag or env var', () => {
     saveConfig({ apiKey: 'mf_saved', apiBase: 'https://saved.example.com' })
 
-    assert.deepEqual(resolveAuth({}), { apiKey: 'mf_saved', apiBase: 'https://saved.example.com' })
+    assert.deepEqual(resolveAuth({}), {
+      apiKey: 'mf_saved',
+      apiKeySource: 'config file',
+      apiBase: 'https://saved.example.com',
+    })
   })
 
   it('prefers the env vars over the saved config', () => {
@@ -101,7 +105,11 @@ describe('resolveAuth', () => {
     process.env.MOCKFLY_API_KEY = 'mf_env'
     process.env.MOCKFLY_API_URL = 'https://env.example.com'
 
-    assert.deepEqual(resolveAuth({}), { apiKey: 'mf_env', apiBase: 'https://env.example.com' })
+    assert.deepEqual(resolveAuth({}), {
+      apiKey: 'mf_env',
+      apiKeySource: 'env MOCKFLY_API_KEY',
+      apiBase: 'https://env.example.com',
+    })
   })
 
   it('prefers the flags over everything else', () => {
@@ -111,6 +119,7 @@ describe('resolveAuth', () => {
 
     assert.deepEqual(resolveAuth({ key: 'mf_flag', api: 'https://flag.example.com' }), {
       apiKey: 'mf_flag',
+      apiKeySource: 'flag --key',
       apiBase: 'https://flag.example.com',
     })
   })
@@ -119,7 +128,11 @@ describe('resolveAuth', () => {
     saveConfig({ apiBase: 'https://saved.example.com' })
     process.env.MOCKFLY_API_KEY = 'mf_env'
 
-    assert.deepEqual(resolveAuth({}), { apiKey: 'mf_env', apiBase: 'https://saved.example.com' })
+    assert.deepEqual(resolveAuth({}), {
+      apiKey: 'mf_env',
+      apiKeySource: 'env MOCKFLY_API_KEY',
+      apiBase: 'https://saved.example.com',
+    })
   })
 
   it('trims trailing slashes off the API base, whatever its source', () => {

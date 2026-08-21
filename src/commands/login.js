@@ -1,6 +1,6 @@
 import readline from 'readline/promises'
 import { fetchProjects } from '../api.js'
-import { DEFAULT_API_BASE, saveConfig, clearConfig, loadConfig, resolveAuth } from '../config.js'
+import { DEFAULT_API_BASE, saveConfig, clearConfig, resolveAuth } from '../config.js'
 import { bold, dim, fail, green } from '../utils.js'
 
 const promptForKey = async () => {
@@ -35,15 +35,13 @@ export const logout = () => {
 }
 
 export const whoami = () => {
-  const config = loadConfig()
-  const { apiKey, apiBase } = resolveAuth()
+  const { apiKey, apiKeySource, apiBase } = resolveAuth()
 
   if (!apiKey) {
     console.log(dim('Not logged in. Run `mockfly login`.'))
     return
   }
 
-  const source = process.env.MOCKFLY_API_KEY && !config.apiKey ? 'env MOCKFLY_API_KEY' : 'config file'
-  console.log(`${bold('API key:')} ${apiKey.slice(0, 11)}… ${dim(`(${source})`)}`)
+  console.log(`${bold('API key:')} ${apiKey.slice(0, 11)}… ${dim(`(${apiKeySource})`)}`)
   console.log(`${bold('API url:')} ${apiBase}`)
 }

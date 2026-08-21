@@ -34,8 +34,17 @@ export const clearConfig = () => {
 export const resolveAuth = (options = {}) => {
   const config = loadConfig()
 
+  // Candidates in precedence order, each labelled for `whoami`: the key that wins
+  // is the one whose origin gets reported, so the two can never disagree.
+  const [apiKeySource, apiKey] = [
+    ['flag --key', options.key],
+    ['env MOCKFLY_API_KEY', process.env.MOCKFLY_API_KEY],
+    ['config file', config.apiKey],
+  ].find(([, key]) => key) || [null, null]
+
   return {
-    apiKey: options.key || process.env.MOCKFLY_API_KEY || config.apiKey || null,
+    apiKey,
+    apiKeySource,
     apiBase: (options.api || process.env.MOCKFLY_API_URL || config.apiBase || DEFAULT_API_BASE).replace(/\/+$/, ''),
   }
 }

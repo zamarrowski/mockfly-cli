@@ -190,7 +190,7 @@ describe('whoami', () => {
     assert.deepEqual(console_.out, ['API key: mf_from_env… (env MOCKFLY_API_KEY)', 'API url: https://api.mockfly.dev'])
   })
 
-  it('credits the config file when both are set, and shows the winning key', async () => {
+  it('credits the env var when it overrides a saved key, and shows the winning key', async () => {
     fetchStub = stubFetch(async () => jsonResponse({ results: [] }))
     await login({ key: 'mf_saved_key_value', api: 'https://saved.example.com' })
     process.env.MOCKFLY_API_KEY = 'mf_env_key_value'
@@ -198,8 +198,11 @@ describe('whoami', () => {
 
     whoami()
 
-    // The env var wins over the config for the value, but the source label only
-    // says "env" when the config has no key at all.
-    assert.deepEqual(console_.out, ['API key: mf_env_key_… (config file)', 'API url: https://saved.example.com'])
+    // The env var wins over the saved key, so it is both the key printed and the
+    // source credited — the saved API url still shows, nothing overrides it here.
+    assert.deepEqual(console_.out, [
+      'API key: mf_env_key_… (env MOCKFLY_API_KEY)',
+      'API url: https://saved.example.com',
+    ])
   })
 })
