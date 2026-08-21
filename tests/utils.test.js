@@ -58,9 +58,9 @@ describe('timeAgo', () => {
     assert.equal(timeAgo(ago(8 * DAY)), '8d ago')
   })
 
-  // Documents today's output for a corrupt timestamp rather than endorsing it.
-  it('yields "NaNd ago" for an unparseable timestamp', () => {
-    assert.equal(timeAgo('not a date'), 'NaNd ago')
+  it('returns "unknown" for an unparseable timestamp', () => {
+    assert.equal(timeAgo('not a date'), 'unknown')
+    assert.equal(timeAgo('2024-13-45T99:99:99Z'), 'unknown')
   })
 })
 

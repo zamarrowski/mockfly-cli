@@ -11,7 +11,9 @@ export const cyan = wrap(36, 39)
 
 export const timeAgo = iso => {
   if (!iso) return 'unknown'
-  const seconds = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000))
+  const pulledAt = new Date(iso).getTime()
+  if (Number.isNaN(pulledAt)) return 'unknown'
+  const seconds = Math.max(0, Math.floor((Date.now() - pulledAt) / 1000))
   if (seconds < 60) return 'just now'
   const minutes = Math.floor(seconds / 60)
   if (minutes < 60) return `${minutes}m ago`
