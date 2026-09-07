@@ -3,6 +3,18 @@ export const REGEX_MATCH_TIMEOUT_IN_MS = 50
 
 export const REGEX_MATCH_SOURCE = 'new RegExp(pattern).test(value)'
 
+export const EXPRESSION_TIMEOUT_IN_MS = 100
+
+export const EVALUATOR_BOOT_TIMEOUT_IN_MS = 5000
+
+export const EVALUATOR_MAX_HEAP_IN_MB = 128
+
+export const TIMED_OUT_EXPRESSION_TTL_IN_SECONDS = 600
+
+export const MAX_RESULT_SIZE = 1000000
+
+export const signalIndexes = { ready: 0, response: 1 }
+
 export const tokenTypes = {
   number: 'number',
   string: 'string',
@@ -70,6 +82,9 @@ export const BLOCKED_PROPERTY_NAMES = [
   'caller',
   'callee',
   'arguments',
+  'call',
+  'apply',
+  'bind',
   'seed',
   'setDefaultRefDate',
 ]

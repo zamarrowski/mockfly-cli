@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { nodeTypes, tokenTypes } from '../src/engine/vm/constants.js'
-import { assertPropertyAllowed, evaluate } from '../src/engine/vm/evaluator.js'
+import { MAX_RESULT_SIZE, nodeTypes, tokenTypes } from '../src/engine/vm/constants.js'
+import { assertPropertyAllowed, assertSizeAllowed, evaluate } from '../src/engine/vm/evaluator.js'
 import { evaluateExpression, resolveExpression } from '../src/engine/vm/index.js'
 import { parse } from '../src/engine/vm/parser.js'
 import { tokenize } from '../src/engine/vm/tokenizer.js'
@@ -264,9 +264,45 @@ describe('assertPropertyAllowed', () => {
   })
 
   it('throws for every blocked property name', () => {
-    for (const name of ['constructor', 'prototype', '__proto__', '__defineGetter__', 'caller', 'arguments', 'seed']) {
+    const names = [
+      'constructor',
+      'prototype',
+      '__proto__',
+      '__defineGetter__',
+      'caller',
+      'arguments',
+      'call',
+      'apply',
+      'bind',
+      'seed',
+    ]
+
+    for (const name of names) {
       assert.throws(() => assertPropertyAllowed(name), { message: `Access to "${name}" is not allowed` })
     }
+  })
+})
+
+describe('assertSizeAllowed', () => {
+  const tooBig = { message: `Results larger than ${MAX_RESULT_SIZE} characters are not allowed` }
+
+  it('returns values whose size stays within the limit', () => {
+    assert.equal(assertSizeAllowed('x'.repeat(MAX_RESULT_SIZE)).length, MAX_RESULT_SIZE)
+    assert.equal(assertSizeAllowed(['a', { b: 'c' }, 1, null, new Date(0)]).length, 5)
+  })
+
+  it('rejects a string longer than the limit', () => {
+    assert.throws(() => assertSizeAllowed('x'.repeat(MAX_RESULT_SIZE) + 'y'), tooBig)
+  })
+
+  it('adds up the strings nested in arrays and plain objects', () => {
+    const half = 'x'.repeat(MAX_RESULT_SIZE / 2)
+
+    assert.throws(() => assertSizeAllowed([half, { nested: half }]), tooBig)
+  })
+
+  it('counts class instances as a single unit instead of walking them', () => {
+    assert.ok(assertSizeAllowed(new Intl.DateTimeFormat('en-US')) instanceof Intl.DateTimeFormat)
   })
 })
 
@@ -387,6 +423,22 @@ describe('evaluate', () => {
 
   it('evaluates BigInt arithmetic', () => {
     assert.equal(run('-(2n * 3n)'), -6n)
+  })
+
+  it('refuses a call, a concatenation, an array or an object whose result exceeds the size limit', () => {
+    const tooBig = { message: `Results larger than ${MAX_RESULT_SIZE} characters are not allowed` }
+
+    assert.throws(() => run(`'x'.repeat(${MAX_RESULT_SIZE + 1})`), tooBig)
+    assert.throws(() => run(`'x'.repeat(${MAX_RESULT_SIZE}) + 'y'`), tooBig)
+    assert.throws(() => run(`['x'.repeat(${MAX_RESULT_SIZE}), 'y']`), tooBig)
+    assert.throws(() => run(`{ a: 'x'.repeat(${MAX_RESULT_SIZE}), b: 'y' }`), tooBig)
+    assert.equal(run(`'x'.repeat(${MAX_RESULT_SIZE}).length`), MAX_RESULT_SIZE)
+  })
+
+  it('does not let a method be called with another this through call, apply or bind', () => {
+    assert.throws(() => run(`'x'.repeat.call('y', 2)`), { message: 'Access to "call" is not allowed' })
+    assert.throws(() => run(`'x'.repeat.apply('y', [2])`), { message: 'Access to "apply" is not allowed' })
+    assert.throws(() => run(`'x'.repeat.bind('y')(2)`), { message: 'Access to "bind" is not allowed' })
   })
 
   it('evaluates arithmetic and concatenation', () => {
