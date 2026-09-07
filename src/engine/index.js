@@ -17,7 +17,7 @@ import {
   MAX_RULE_GROUP_DEPTH,
   ruleGroupOperators,
 } from './constants.js'
-import { evalCode, matchesRegex } from './vm.js'
+import { matchesRegex, resolveExpression } from './vm/index.js'
 
 export const queryParamsToString = query => {
   if (query) {
@@ -136,7 +136,7 @@ export const replaceRawFakerExpressions = string => {
   if (rawFakerExpressions) {
     rawFakerExpressions.forEach(expr => {
       const code = expr.replace(/{{|}}/g, '')
-      const result = evalCode(code)
+      const result = resolveExpression(code)
       if (result !== code) string = string.replace(expr, result)
     })
   }
@@ -394,7 +394,7 @@ export const replaceFakeDates = body => {
     return Object.fromEntries(Object.entries(body).map(([key, value]) => [key, replaceFakeDates(value)]))
   } else if (typeof body === 'string') {
     if (/^{{new\s+Intl.DateTimeFormat\s*/.test(body) || /^{{new\s+Date\s*/.test(body)) {
-      return evalCode(body.replace('{{', '').replace('}}', ''))
+      return resolveExpression(body.replace('{{', '').replace('}}', ''))
     }
   }
 

@@ -278,7 +278,7 @@ describe('rule comparators', () => {
     assert.equal(compare('regex', 'user-42', '^(user'), false)
   })
 
-  // The reason the regex runs inside vm2 with a timeout: without it this call would
+  // The reason the regex runs inside Node's vm with a timeout: without it this call would
   // block the server for years instead of returning false in a few milliseconds.
   it('gives up instead of hanging on a catastrophic regular expression', () => {
     const start = Date.now()
