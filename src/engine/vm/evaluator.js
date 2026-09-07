@@ -39,6 +39,8 @@ const callFunction = (fn, thisArgument, args) => {
 
 const evaluateLiteral = node => node.value
 
+const evaluateRegex = node => new RegExp(node.pattern, node.flags)
+
 const evaluateIdentifier = (node, sandbox) => {
   if (!Object.hasOwn(sandbox.globals, node.name)) throw new Error(`Unknown identifier "${node.name}"`)
 
@@ -85,6 +87,7 @@ const evaluateBinary = (node, sandbox) => {
 
 const EVALUATORS = {
   [nodeTypes.literal]: evaluateLiteral,
+  [nodeTypes.regex]: evaluateRegex,
   [nodeTypes.identifier]: evaluateIdentifier,
   [nodeTypes.array]: evaluateArray,
   [nodeTypes.object]: evaluateObject,

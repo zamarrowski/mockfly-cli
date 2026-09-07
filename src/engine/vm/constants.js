@@ -7,12 +7,14 @@ export const tokenTypes = {
   number: 'number',
   string: 'string',
   identifier: 'identifier',
+  regex: 'regex',
   punctuator: 'punctuator',
   end: 'end',
 }
 
 export const nodeTypes = {
   literal: 'literal',
+  regex: 'regex',
   identifier: 'identifier',
   array: 'array',
   object: 'object',
@@ -41,6 +43,8 @@ export const punctuators = {
 
 export const PUNCTUATORS = Object.values(punctuators)
 
+export const VALUE_ENDING_PUNCTUATORS = [punctuators.closeParen, punctuators.closeBracket, punctuators.closeBrace]
+
 export const POSTFIX_OPERATORS = [punctuators.dot, punctuators.openBracket, punctuators.openParen]
 
 export const ADDITIVE_OPERATORS = [punctuators.plus, punctuators.minus]
@@ -52,6 +56,8 @@ export const STRING_ESCAPES = { n: '\n', t: '\t', r: '\r' }
 export const KEYWORD_LITERALS = { true: true, false: false, null: null, undefined: undefined }
 
 export const NEW_KEYWORD = 'new'
+
+export const BIGINT_SUFFIX = 'n'
 
 export const BLOCKED_PROPERTY_NAMES = [
   'constructor',

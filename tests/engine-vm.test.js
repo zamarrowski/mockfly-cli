@@ -57,6 +57,34 @@ describe('tokenize', () => {
     assert.deepEqual(tokenize('$ref_1').slice(0, -1), [{ type: tokenTypes.identifier, value: '$ref_1', position: 0 }])
   })
 
+  it('reads a BigInt literal as a number token with a BigInt value', () => {
+    assert.deepEqual(tokenize('100000n').slice(0, -1), [{ type: tokenTypes.number, value: 100000n, position: 0 }])
+  })
+
+  it('reads a regular expression literal with its flags where an operand is expected', () => {
+    assert.deepEqual(tokenize(`replace(/-/g, '/')`).slice(0, -1), [
+      { type: tokenTypes.identifier, value: 'replace', position: 0 },
+      { type: tokenTypes.punctuator, value: '(', position: 7 },
+      { type: tokenTypes.regex, value: { pattern: '-', flags: 'g' }, position: 8 },
+      { type: tokenTypes.punctuator, value: ',', position: 12 },
+      { type: tokenTypes.string, value: '/', position: 14 },
+      { type: tokenTypes.punctuator, value: ')', position: 17 },
+    ])
+  })
+
+  it('does not end a regular expression at an escaped slash or at a slash inside a character class', () => {
+    assert.deepEqual(tokenize('/[/]\\/x/')[0].value, { pattern: '[/]\\/x', flags: '' })
+  })
+
+  it('reads a slash after a value as a division', () => {
+    assert.deepEqual(tokenize('10 / 2')[1], { type: tokenTypes.punctuator, value: '/', position: 3 })
+    assert.equal(tokenize('list[0] / fn() / 2').filter(token => token.value === '/').length, 2)
+  })
+
+  it('rejects a regular expression that is not terminated', () => {
+    assert.throws(() => tokenize('/abc'), { message: 'Unterminated regular expression at position 0' })
+  })
+
   it('rejects a string that is not terminated', () => {
     assert.throws(() => tokenize(`'abc`), { message: 'Unterminated string at position 0' })
   })
@@ -176,6 +204,17 @@ describe('parse', () => {
 
   it('lets parentheses override the precedence', () => {
     assert.deepEqual(parse('(1 + 2) / 3'), binary('/', binary('+', literal(1), literal(2)), literal(3)))
+  })
+
+  it('parses a regular expression literal as an argument', () => {
+    assert.deepEqual(parse(`date.replace(/-/g, '/')`).args, [
+      { type: nodeTypes.regex, pattern: '-', flags: 'g' },
+      literal('/'),
+    ])
+  })
+
+  it('parses a BigInt literal', () => {
+    assert.deepEqual(parse('{ min: 100000n }').properties[0].value, literal(100000n))
   })
 
   it('rejects tokens left after the expression', () => {
@@ -338,6 +377,18 @@ describe('evaluate', () => {
     assert.throws(() => run('new Intl.NumberFormat()'), { message: 'Constructor is not allowed' })
   })
 
+  it('evaluates a regular expression literal into a RegExp', () => {
+    assert.equal(run(`'2026-09-07'.replace(/-/g, '/')`), '2026/09/07')
+  })
+
+  it('rejects invalid regular expression flags', () => {
+    assert.throws(() => run('/a/zz'), { message: "Invalid flags supplied to RegExp constructor 'zz'" })
+  })
+
+  it('evaluates BigInt arithmetic', () => {
+    assert.equal(run('-(2n * 3n)'), -6n)
+  })
+
   it('evaluates arithmetic and concatenation', () => {
     assert.equal(run('-(1 + 2) * 3'), -9)
     assert.equal(run('10 / 4 - 1'), 1.5)
@@ -418,6 +469,20 @@ describe('evaluateExpression', () => {
       ),
       /GMT\+1[01]$/
     )
+  })
+
+  it('resolves a date formatted through a regular expression replacement', () => {
+    assert.match(
+      evaluateExpression(`new Intl.DateTimeFormat('en-CA').format(new Date()).replace(/-/g, '/') + ' 14:38:32'`),
+      /^\d{4}\/\d{2}\/\d{2} 14:38:32$/
+    )
+  })
+
+  it('resolves a faker call with BigInt arguments', () => {
+    const result = evaluateExpression('faker.number.bigInt({ min: 100000n, max: 999999n })')
+
+    assert.equal(typeof result, 'bigint')
+    assert.ok(result >= 100000n && result <= 999999n)
   })
 
   it('rejects an identifier outside the sandbox', () => {

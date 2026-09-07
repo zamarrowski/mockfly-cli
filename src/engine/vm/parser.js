@@ -121,6 +121,7 @@ const parsePrimary = cursor => {
   const token = advance(cursor)
 
   if (token.type === tokenTypes.number || token.type === tokenTypes.string) return buildLiteral(token.value)
+  if (token.type === tokenTypes.regex) return { type: nodeTypes.regex, ...token.value }
   if (token.type === tokenTypes.identifier) return parseIdentifierOrKeyword(cursor, token)
   if (isPunctuator(token, punctuators.openParen)) return parseGroup(cursor)
   if (isPunctuator(token, punctuators.openBracket)) return parseArray(cursor)
