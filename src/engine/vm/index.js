@@ -1,15 +1,14 @@
-// Mirrors mockfly-backend: src/vm/index.js
-import { faker } from '@faker-js/faker'
+// Mirrors mockfly-backend: src/vm/index.js, without its worker thread. The cloud evaluates
+// every expression in a worker with a timeout and a heap cap because one process serves
+// every project; the CLI serves one user's own snapshots, so it evaluates in-thread. The
+// grammar, the sandbox and the result size cap are the same files, so results match.
 import { Script } from 'vm'
 import { REGEX_MATCH_SOURCE, REGEX_MATCH_TIMEOUT_IN_MS } from './constants.js'
-import { evaluate } from './evaluator.js'
-import { parse } from './parser.js'
-
-const SANDBOX = { globals: { faker, Date, Intl, Math }, constructors: [Date, Intl.DateTimeFormat] }
+import { evaluateExpression } from './expression.js'
 
 const regexMatchScript = new Script(REGEX_MATCH_SOURCE)
 
-export const evaluateExpression = code => evaluate(parse(code), SANDBOX)
+export { evaluateExpression }
 
 export const resolveExpression = code => {
   try {
